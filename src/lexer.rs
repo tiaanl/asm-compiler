@@ -16,7 +16,6 @@ pub enum PunctuationKind {
     Plus,
     Minus,
     Multiply,
-    QuestionMark,
 }
 
 #[derive(Debug)]
@@ -136,7 +135,6 @@ impl<'a> Lexer<'a> {
             '+' => Ok(self.punctuation(PunctuationKind::Plus)),
             '-' => Ok(self.punctuation(PunctuationKind::Minus)),
             '*' => Ok(self.punctuation(PunctuationKind::Multiply)),
-            '?' => Ok(self.punctuation(PunctuationKind::QuestionMark)),
 
             c => Err(LexerError::new(self.pos, LexerErrorKind::InvalidToken(c))),
         }
