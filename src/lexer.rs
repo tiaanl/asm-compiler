@@ -29,7 +29,6 @@ pub enum Token<'a> {
     EndOfFile,
 }
 
-#[derive(Debug)]
 pub enum LexerErrorKind {
     InvalidToken(char),
     UnterminatedStringLiteral,
@@ -44,7 +43,6 @@ impl std::fmt::Display for LexerErrorKind {
     }
 }
 
-#[derive(Debug)]
 pub struct LexerError {
     pub pos: usize,
     pub kind: LexerErrorKind,
@@ -67,22 +65,8 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token, LexerError> {
-        if self.pos >= self.source.len() {
+        if self.skip_whitespace() {
             return Ok(Token::EndOfFile);
-        }
-
-        // Skip any preceeding whitespace.
-        loop {
-            match self.source[self.pos..].chars().next() {
-                Some(c) if is_whitespace(c) => {
-                    self.pos += 1;
-                    continue;
-                }
-
-                None => return Ok(Token::EndOfFile),
-
-                _ => break,
-            }
         }
 
         let mut chars = self.source[self.pos..].chars();
@@ -92,17 +76,17 @@ impl<'a> Lexer<'a> {
             None => return Ok(Token::EndOfFile),
         };
 
-        Ok(match first {
+        match first {
             ';' => {
                 let start = self.pos;
                 match self.source[start..].find(|c| c == '\n') {
                     Some(found) => {
                         self.pos += found;
-                        Token::Comment(&self.source[start..self.pos])
+                        Ok(Token::Comment(&self.source[start..self.pos]))
                     }
                     None => {
                         // If a new line was not found, we have to take the rest of the source.
-                        Token::Comment(&self.source[start..])
+                        Ok(Token::Comment(&self.source[start..]))
                     }
                 }
             }
@@ -112,17 +96,15 @@ impl<'a> Lexer<'a> {
 
                 // Okay to unwrap here, because we already know [is_identifier_first] succeeded and
                 // [is_identifier] is a superset of it.
-                let found = self.source[self.pos..].find(|c| !is_identifier(c)).unwrap();
+                self.pos += self.source[self.pos..].find(|c| !is_identifier(c)).unwrap();
 
-                self.pos += found;
-
-                Token::Identifier(&self.source[start..self.pos])
+                Ok(Token::Identifier(&self.source[start..self.pos]))
             }
 
             c if is_number(c) => {
                 let start = self.pos;
 
-                if let Some(second) = chars.next() {
+                Ok(if let Some(second) = chars.next() {
                     match second {
                         'x' => {
                             self.pos += 2;
@@ -137,116 +119,83 @@ impl<'a> Lexer<'a> {
                 } else {
                     // End of stream reached, so we handle only the single first character as a number
                     self.decimal_number(start)
+                })
+            }
+
+            '\'' => self.string_literal(),
+
+            '\n' => Ok(self.single_char_token(Token::NewLine)),
+
+            ':' => Ok(self.punctuation(PunctuationKind::Colon)),
+            ',' => Ok(self.punctuation(PunctuationKind::Comma)),
+            '.' => Ok(self.punctuation(PunctuationKind::Dot)),
+            '[' => Ok(self.punctuation(PunctuationKind::OpenBracket)),
+            ']' => Ok(self.punctuation(PunctuationKind::CloseBracket)),
+            '(' => Ok(self.punctuation(PunctuationKind::OpenParenthesis)),
+            ')' => Ok(self.punctuation(PunctuationKind::CloseParenthesis)),
+            '+' => Ok(self.punctuation(PunctuationKind::Plus)),
+            '-' => Ok(self.punctuation(PunctuationKind::Minus)),
+            '*' => Ok(self.punctuation(PunctuationKind::Multiply)),
+            '?' => Ok(self.punctuation(PunctuationKind::QuestionMark)),
+
+            c => Err(LexerError::new(self.pos, LexerErrorKind::InvalidToken(c))),
+        }
+    }
+
+    #[inline(always)]
+    fn single_char_token(&mut self, token: Token<'a>) -> Token<'a> {
+        self.pos += 1;
+        token
+    }
+
+    #[inline(always)]
+    fn punctuation(&mut self, punctuation: PunctuationKind) -> Token<'a> {
+        self.single_char_token(Token::Punctuation(punctuation))
+    }
+
+    /// Advances the [pos] past any whitespace characters.  Return true if the
+    /// end of the file was reached.
+    fn skip_whitespace(&mut self) -> bool {
+        loop {
+            match self.source[self.pos..].chars().next() {
+                Some(c) if is_whitespace(c) => {
+                    self.pos += 1;
+                    continue;
                 }
-            }
 
-            '\'' => {
-                return self.string_literal();
-            }
+                None => return true,
 
-            '\n' => {
-                self.pos += 1;
-
-                Token::NewLine
+                _ => break,
             }
+        }
 
-            ':' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::Colon)
-            }
-
-            ',' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::Comma)
-            }
-
-            '.' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::Dot)
-            }
-
-            '[' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::OpenBracket)
-            }
-
-            ']' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::CloseBracket)
-            }
-
-            '(' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::OpenParenthesis)
-            }
-
-            ')' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::CloseParenthesis)
-            }
-
-            '+' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::Plus)
-            }
-
-            '-' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::Minus)
-            }
-
-            '*' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::Multiply)
-            }
-
-            '?' => {
-                self.pos += 1;
-                Token::Punctuation(PunctuationKind::QuestionMark)
-            }
-
-            c => {
-                return Err(LexerError::new(self.pos, LexerErrorKind::InvalidToken(c)));
-            }
-        })
+        false
     }
 
     fn decimal_number(&mut self, start: usize) -> Token {
-        // Okay to unwrap here, because we already know [is_identifier_first] succeeded and
-        // [is_identifier] is a superset of it.
-        let found = self.source[start..].find(|c| !is_number(c)).unwrap();
+        self.pos += self.source[start..].find(|c| !is_number(c)).unwrap();
 
-        self.pos += found;
-
-        let value = self.source[start..self.pos].parse().unwrap();
-
-        Token::Literal(LiteralKind::Number(value))
+        Token::Literal(LiteralKind::Number(
+            self.source[start..self.pos].parse().unwrap(),
+        ))
     }
 
     fn hexadecimal_number(&mut self, start: usize) -> Token {
-        // Okay to unwrap here, because we already know [is_identifier_first] succeeded and
-        // [is_identifier] is a superset of it.
-        let found = self.source[start..]
+        self.pos += self.source[start..]
             .find(|c| !is_hexadecimal_digit(c))
             .unwrap();
 
-        self.pos += found;
-
-        let value = i32::from_str_radix(&self.source[start..self.pos], 16).unwrap();
-
-        Token::Literal(LiteralKind::Number(value))
+        Token::Literal(LiteralKind::Number(
+            i32::from_str_radix(&self.source[start..self.pos], 16).unwrap(),
+        ))
     }
 
     fn binary_number(&mut self, start: usize) -> Token {
-        // Okay to unwrap here, because we already know [is_identifier_first] succeeded and
-        // [is_identifier] is a superset of it.
-        let found = self.source[start..].find(|c| !is_number(c)).unwrap();
+        self.pos += self.source[start..].find(|c| !is_number(c)).unwrap();
 
-        self.pos += found;
-
-        let value = i32::from_str_radix(&self.source[start..self.pos], 1).unwrap();
-
-        Token::Literal(LiteralKind::Number(value))
+        Token::Literal(LiteralKind::Number(
+            i32::from_str_radix(&self.source[start..self.pos], 1).unwrap(),
+        ))
     }
 
     fn string_literal(&mut self) -> Result<Token, LexerError> {
@@ -262,14 +211,19 @@ impl<'a> Lexer<'a> {
                     ));
                 }
 
+                None => {
+                    return Err(LexerError::new(
+                        start,
+                        LexerErrorKind::UnterminatedStringLiteral,
+                    ));
+                }
+
                 Some(c) if c == '\'' => {
                     let len = self.source.len() - start - chars.as_str().len();
                     let lit = &self.source[start..start + len];
                     self.pos += len;
                     return Ok(Token::Literal(LiteralKind::String(lit)));
                 }
-
-                None => todo!(),
 
                 _ => {}
             }
@@ -282,6 +236,7 @@ fn is_identifier_first(c: char) -> bool {
     ('a'..='z').contains(&c) | ('A'..='Z').contains(&c) || c == '_'
 }
 
+#[inline(always)]
 fn is_identifier(c: char) -> bool {
     is_identifier_first(c) || is_number(c)
 }
