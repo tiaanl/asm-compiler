@@ -28,6 +28,7 @@ pub enum Token<'a> {
     EndOfFile,
 }
 
+#[derive(Debug)]
 pub enum LexerErrorKind {
     InvalidToken(char),
     UnterminatedStringLiteral,
@@ -42,6 +43,7 @@ impl std::fmt::Display for LexerErrorKind {
     }
 }
 
+#[derive(Debug)]
 pub struct LexerError {
     pub pos: usize,
     pub kind: LexerErrorKind,
@@ -85,6 +87,7 @@ impl<'a> Lexer<'a> {
                     }
                     None => {
                         // If a new line was not found, we have to take the rest of the source.
+                        self.pos += self.source[start..].len();
                         Ok(Token::Comment(&self.source[start..]))
                     }
                 }
@@ -93,9 +96,13 @@ impl<'a> Lexer<'a> {
             c if is_identifier_first(c) => {
                 let start = self.pos;
 
-                // Okay to unwrap here, because we already know [is_identifier_first] succeeded and
-                // [is_identifier] is a superset of it.
-                self.pos += self.source[self.pos..].find(|c| !is_identifier(c)).unwrap();
+                // If we can't find another character that is not an
+                // identifier, it means the identifier fills the rest of the
+                // source up to the end of the file.
+                self.pos += match self.source[self.pos..].find(|c| !is_identifier(c)) {
+                    Some(distance) => distance,
+                    None => self.source[self.pos..].len(),
+                };
 
                 Ok(Token::Identifier(&self.source[start..self.pos]))
             }
@@ -199,31 +206,34 @@ impl<'a> Lexer<'a> {
     fn string_literal(&mut self) -> Result<Token, LexerError> {
         let start = self.pos;
 
-        let mut chars = self.source[(start + 1)..].chars();
-        loop {
-            match chars.next() {
-                Some(c) if c == '\n' => {
-                    return Err(LexerError::new(
-                        start,
+        let first_terminator = self.source[(start + 1)..].find('\'');
+        let first_new_line = self.source[(start + 1)..].find('\n');
+
+        match (first_terminator, first_new_line) {
+            (None, None) | (None, Some(_)) => Err(LexerError::new(
+                self.pos,
+                LexerErrorKind::UnterminatedStringLiteral,
+            )),
+
+            (Some(terminator), None) => {
+                self.pos += terminator + 2;
+                Ok(Token::Literal(LiteralKind::String(
+                    &self.source[(start + 1)..(self.pos - 1)],
+                )))
+            }
+
+            (Some(terminator), Some(new_line)) => {
+                if new_line < terminator {
+                    Err(LexerError::new(
+                        self.pos,
                         LexerErrorKind::UnterminatedStringLiteral,
-                    ));
+                    ))
+                } else {
+                    self.pos += terminator + 2;
+                    Ok(Token::Literal(LiteralKind::String(
+                        &self.source[(start + 1)..(self.pos - 1)],
+                    )))
                 }
-
-                None => {
-                    return Err(LexerError::new(
-                        start,
-                        LexerErrorKind::UnterminatedStringLiteral,
-                    ));
-                }
-
-                Some(c) if c == '\'' => {
-                    let len = self.source.len() - start - chars.as_str().len();
-                    let lit = &self.source[start..start + len];
-                    self.pos += len;
-                    return Ok(Token::Literal(LiteralKind::String(lit)));
-                }
-
-                _ => {}
             }
         }
     }
@@ -252,4 +262,98 @@ fn is_whitespace(c: char) -> bool {
 #[inline(always)]
 fn is_hexadecimal_digit(c: char) -> bool {
     is_number(c) || ('a'..='f').contains(&c) || ('A'..='F').contains(&c)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn end_of_file() {
+        let mut lexer = Lexer::new("");
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+
+        let mut lexer = Lexer::new("test    ");
+        assert!(matches!(lexer.next_token(), Ok(_)));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+    }
+
+    #[test]
+    fn skips_whitespace() {
+        let mut lexer = Lexer::new(" \t test \rtest2");
+        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("test"))));
+        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("test2"))));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+    }
+
+    #[test]
+    fn comments() {
+        let mut lexer = Lexer::new("comment ; this is a comment");
+        assert!(matches!(lexer.next_token(), Ok(_)));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Comment("; this is a comment"))
+        ));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+
+        let mut lexer = Lexer::new("comment ; this is a comment with newline\nid");
+        assert!(matches!(lexer.next_token(), Ok(_)));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Comment("; this is a comment with newline"))
+        ));
+        assert!(matches!(lexer.next_token(), Ok(_)));
+        assert!(matches!(lexer.next_token(), Ok(_)));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+    }
+
+    #[test]
+    fn string_literals() {
+        let mut lexer = Lexer::new("  'a string literal ;; 123'");
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::String(
+                "a string literal ;; 123"
+            )))
+        ));
+
+        let mut lexer = Lexer::new("  'a string literal  ");
+        assert!(matches!(
+            lexer.next_token(),
+            Err(LexerError {
+                pos: 2,
+                kind: LexerErrorKind::UnterminatedStringLiteral
+            })
+        ));
+
+        let mut lexer = Lexer::new("  'a string literal\n'  ");
+        assert!(matches!(
+            lexer.next_token(),
+            Err(LexerError {
+                pos: 2,
+                kind: LexerErrorKind::UnterminatedStringLiteral
+            })
+        ));
+    }
+
+    #[test]
+    fn identifier() {
+        let mut lexer = Lexer::new("test _te_st test123 1tst");
+        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("test"))));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Identifier("_te_st"))
+        ));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Identifier("test123"))
+        ));
+        assert!(!matches!(lexer.next_token(), Ok(Token::Identifier(_))));
+        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("tst"))));
+        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+    }
 }
