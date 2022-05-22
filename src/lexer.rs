@@ -55,6 +55,7 @@ impl LexerError {
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Lexer<'a> {
     source: &'a str,
     pos: usize,
@@ -65,7 +66,12 @@ impl<'a> Lexer<'a> {
         Self { source, pos: 0 }
     }
 
-    pub fn next_token(&mut self) -> Result<Token, LexerError> {
+    #[inline(always)]
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    pub fn next_token(&mut self) -> Result<Token<'a>, LexerError> {
         if self.skip_whitespace() {
             return Ok(Token::EndOfFile);
         }
@@ -177,33 +183,40 @@ impl<'a> Lexer<'a> {
         false
     }
 
-    fn decimal_number(&mut self, start: usize) -> Token {
-        self.pos += self.source[start..].find(|c| !is_number(c)).unwrap();
+    fn decimal_number(&mut self, start: usize) -> Token<'a> {
+        self.pos += match self.source[start..].find(|c| !is_number(c)) {
+            Some(found) => found,
+            None => self.source.len() - start,
+        };
 
         Token::Literal(LiteralKind::Number(
             self.source[start..self.pos].parse().unwrap(),
         ))
     }
 
-    fn hexadecimal_number(&mut self, start: usize) -> Token {
-        self.pos += self.source[start..]
-            .find(|c| !is_hexadecimal_digit(c))
-            .unwrap();
+    fn hexadecimal_number(&mut self, start: usize) -> Token<'a> {
+        self.pos += match self.source[start..].find(|c| !is_hexadecimal_digit(c)) {
+            Some(found) => found,
+            None => self.source.len() - start,
+        };
 
         Token::Literal(LiteralKind::Number(
             i32::from_str_radix(&self.source[start..self.pos], 16).unwrap(),
         ))
     }
 
-    fn binary_number(&mut self, start: usize) -> Token {
-        self.pos += self.source[start..].find(|c| !is_number(c)).unwrap();
+    fn binary_number(&mut self, start: usize) -> Token<'a> {
+        self.pos += match self.source[start..].find(|c| !is_number(c)) {
+            Some(found) => found,
+            None => self.source.len() - start,
+        };
 
         Token::Literal(LiteralKind::Number(
-            i32::from_str_radix(&self.source[start..self.pos], 1).unwrap(),
+            i32::from_str_radix(&self.source[start..self.pos], 2).unwrap(),
         ))
     }
 
-    fn string_literal(&mut self) -> Result<Token, LexerError> {
+    fn string_literal(&mut self) -> Result<Token<'a>, LexerError> {
         let start = self.pos;
 
         let first_terminator = self.source[(start + 1)..].find('\'');
@@ -337,6 +350,51 @@ mod tests {
                 pos: 2,
                 kind: LexerErrorKind::UnterminatedStringLiteral
             })
+        ));
+    }
+
+    #[test]
+    fn number_literals() {
+        let mut lexer = Lexer::new(" 10 0x10 0b10 0X10 0B10 0x ");
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(10)))
+        ));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(16)))
+        ));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(2)))
+        ));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(0)))
+        ));
+        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("X10"))));
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(0)))
+        ));
+        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("B10"))));
+
+        let mut lexer = Lexer::new("10");
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(10)))
+        ));
+
+        let mut lexer = Lexer::new("0x10");
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(16)))
+        ));
+
+        let mut lexer = Lexer::new("0b10");
+        assert!(matches!(
+            lexer.next_token(),
+            Ok(Token::Literal(LiteralKind::Number(2)))
         ));
     }
 
