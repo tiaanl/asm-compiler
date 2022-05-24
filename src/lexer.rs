@@ -20,6 +20,7 @@ pub enum PunctuationKind {
 
 #[derive(Clone, Copy, Debug)]
 pub enum Token<'a> {
+    Whitespace,
     Identifier(&'a str),
     Literal(LiteralKind<'a>),
     Punctuation(PunctuationKind),
@@ -72,10 +73,6 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token<'a>, LexerError> {
-        if self.skip_whitespace() {
-            return Ok(Token::EndOfFile);
-        }
-
         let mut chars = self.source[self.pos..].chars();
 
         let first = match chars.next() {
@@ -99,6 +96,15 @@ impl<'a> Lexer<'a> {
                 }
             }
 
+            c if is_whitespace(c) => {
+                self.pos += match self.source[self.pos..].find(|c| !is_whitespace(c)) {
+                    Some(distance) => distance,
+                    None => self.source[self.pos..].len(),
+                };
+
+                Ok(Token::Whitespace)
+            }
+
             c if is_identifier_first(c) => {
                 let start = self.pos;
 
@@ -113,26 +119,7 @@ impl<'a> Lexer<'a> {
                 Ok(Token::Identifier(&self.source[start..self.pos]))
             }
 
-            c if is_number(c) => {
-                let start = self.pos;
-
-                Ok(if let Some(second) = chars.next() {
-                    match second {
-                        'x' => {
-                            self.pos += 2;
-                            self.hexadecimal_number(start + 2)
-                        }
-                        'b' => {
-                            self.pos += 2;
-                            self.binary_number(start + 2)
-                        }
-                        _ => self.decimal_number(start),
-                    }
-                } else {
-                    // End of stream reached, so we handle only the single first character as a number
-                    self.decimal_number(start)
-                })
-            }
+            c if is_number(c) => Ok(self.number(c)),
 
             '\'' => self.string_literal(),
 
@@ -162,25 +149,6 @@ impl<'a> Lexer<'a> {
     #[inline(always)]
     fn punctuation(&mut self, punctuation: PunctuationKind) -> Token<'a> {
         self.single_char_token(Token::Punctuation(punctuation))
-    }
-
-    /// Advances the [pos] past any whitespace characters.  Return true if the
-    /// end of the file was reached.
-    fn skip_whitespace(&mut self) -> bool {
-        loop {
-            match self.source[self.pos..].chars().next() {
-                Some(c) if is_whitespace(c) => {
-                    self.pos += 1;
-                    continue;
-                }
-
-                None => return true,
-
-                _ => break,
-            }
-        }
-
-        false
     }
 
     fn decimal_number(&mut self, start: usize) -> Token<'a> {
@@ -214,6 +182,30 @@ impl<'a> Lexer<'a> {
         Token::Literal(LiteralKind::Number(
             i32::from_str_radix(&self.source[start..self.pos], 2).unwrap(),
         ))
+    }
+
+    fn number(&mut self, first_char: char) -> Token<'a> {
+        let start = self.pos;
+        self.pos += 1;
+
+        if let Some(second) = self.source[self.pos..].chars().next() {
+            match dbg!(second) {
+                'x' => {
+                    self.pos += 1;
+                    self.hexadecimal_number(start + 2)
+                }
+
+                'b' => {
+                    self.pos += 1;
+                    self.binary_number(start + 2)
+                }
+
+                _ => self.decimal_number(start),
+            }
+        } else {
+            // End of stream reached, so we handle only the single first character as a number
+            self.decimal_number(start)
+        }
     }
 
     fn string_literal(&mut self) -> Result<Token<'a>, LexerError> {

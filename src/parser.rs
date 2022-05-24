@@ -48,7 +48,7 @@ impl<'a> Parser<'a> {
     fn next_token(&mut self) -> Result<(), LexerError> {
         loop {
             match self.lexer.next_token()? {
-                Token::Comment(_) => {
+                Token::Comment(_) | Token::Whitespace => {
                     continue;
                 }
                 token => {
