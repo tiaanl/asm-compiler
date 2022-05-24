@@ -1,10 +1,10 @@
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum LiteralKind<'a> {
     Number(i32),
     String(&'a str),
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum PunctuationKind {
     Colon,
     Comma,
@@ -18,7 +18,7 @@ pub enum PunctuationKind {
     Multiply,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Copy, Debug)]
 pub enum Token<'a> {
     Identifier(&'a str),
     Literal(LiteralKind<'a>),

@@ -1,28 +1,34 @@
 #[derive(Debug, PartialEq, Eq)]
-pub enum Operand {
+pub enum DataSize {
+    Byte,
+    Word,
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum AddressOrLabel<'a> {
+    // Address(u32),
+    Label(&'a str),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Operand<'a> {
     Immediate(i32),
-    // DirectAddress,
+    DirectAddress(Option<DataSize>, AddressOrLabel<'a>),
     // IndirectAddress,
-    // Register,
+    Register(&'a str),
     // Displacement,
     // FarAddress,
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Operands {
+pub enum Operands<'a> {
     None,
-    Destination(Operand),
-    DestinationAndSource(Operand, Operand),
+    Destination(Operand<'a>),
+    DestinationAndSource(Operand<'a>, Operand<'a>),
 }
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Instruction<'a> {
     pub mnemonic: &'a str,
-    pub operands: Operands,
-}
-
-#[derive(Debug)]
-pub struct Block<'a> {
-    pub origin: u32,
-    pub instructions: Vec<Instruction<'a>>,
+    pub operands: Operands<'a>,
 }
