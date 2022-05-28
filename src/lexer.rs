@@ -157,6 +157,8 @@ impl<'a> Lexer<'a> {
             None => self.source.len() - start,
         };
 
+        dbg!(&self.source[start..self.pos]);
+
         Token::Literal(LiteralKind::Number(
             self.source[start..self.pos].parse().unwrap(),
         ))
@@ -186,24 +188,28 @@ impl<'a> Lexer<'a> {
 
     fn number(&mut self, first_char: char) -> Token<'a> {
         let start = self.pos;
-        self.pos += 1;
+        // self.pos += 1;
 
-        if let Some(second) = self.source[self.pos..].chars().next() {
-            match dbg!(second) {
-                'x' => {
-                    self.pos += 1;
-                    self.hexadecimal_number(start + 2)
+        if first_char == '0' {
+            if let Some(second) = self.source[self.pos..].chars().next() {
+                match second {
+                    'x' => {
+                        self.pos += 1;
+                        self.hexadecimal_number(start + 2)
+                    }
+
+                    'b' => {
+                        self.pos += 1;
+                        self.binary_number(start + 2)
+                    }
+
+                    _ => self.decimal_number(start),
                 }
-
-                'b' => {
-                    self.pos += 1;
-                    self.binary_number(start + 2)
-                }
-
-                _ => self.decimal_number(start),
+            } else {
+                // End of stream reached, so we handle only the single first character as a number
+                self.decimal_number(start)
             }
         } else {
-            // End of stream reached, so we handle only the single first character as a number
             self.decimal_number(start)
         }
     }

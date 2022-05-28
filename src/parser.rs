@@ -65,7 +65,12 @@ impl<'a> Parser<'a> {
 
     fn peek_token(&self) -> Result<Token<'a>, LexerError> {
         let mut lexer = self.lexer;
-        lexer.next_token()
+        loop {
+            match lexer.next_token() {
+                Ok(Token::Whitespace) | Ok(Token::Comment(_)) => continue,
+                r => return r,
+            }
+        }
     }
 
     /// The current token should be a new line and if it is, consume it.
@@ -89,7 +94,7 @@ impl<'a> Parser<'a> {
             Token::Identifier(_) => {
                 // We found an identifier, so let's check the following token
                 // to determine if it is a label, mnemonic, etc.
-                match self.peek_token()? {
+                match dbg!(self.peek_token()?) {
                     Token::Punctuation(PunctuationKind::Colon) => {
                         // If we encounter a label, then we add the label to the parser and
                         // move onto the next token.

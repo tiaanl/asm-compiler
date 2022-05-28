@@ -15,10 +15,10 @@
 ; nasm -o snake.com -fbin snake.asm
 
 
-VGA_MEM                 equ     0A000H  ; video memory bank
-SCR_MEM                 equ     09000H  ; last 64kB segment
-FONT_SEG                equ     0F000H  ; ROM-Font segment
-FONT_OFF                equ     0FA6EH  ; ROM-Font offset
+VGA_MEM                 equ     0xA000  ; video memory bank
+SCR_MEM                 equ     0x9000  ; last 64kB segment
+FONT_SEG                equ     0xF000  ; ROM-Font segment
+FONT_OFF                equ     0xFA6E  ; ROM-Font offset
 
 
 TRANSPARENT_COLOR       equ     0
@@ -37,7 +37,7 @@ KEY_P                   equ     25
         ; BITS 16
 
 
-        ; ORG 100H
+        ; ORG 0x100
         JMP main
 
 
@@ -45,7 +45,7 @@ KEY_P                   equ     25
 keyboard_int:
         STI
         PUSH AX
-        IN AL,60H                                    ; get key from keyboard port
+        IN AL,0x60                                    ; get key from keyboard port
         MOV [CS:lastkey],AL
         POP AX
 
@@ -68,31 +68,31 @@ check_keys_2:
         POP AX
 
         PUSH AX
-        MOV AL,20H                                   ; send end of irq
-        OUT 20H,AL
+        MOV AL,0x20                                   ; send end of irq
+        OUT 0x20,AL
         POP AX
 
         CLI
         IRET
 
 install_keyboard:
-        MOV AX,3509H                                 ; get old keyboard int proc
-        INT 21H
+        MOV AX,0x3509                                 ; get old keyboard int proc
+        INT 0x21
         MOV [CS:old_keyboard_int],BX
         MOV [CS:old_keyboard_int + 2],ES
-        MOV AX,2509H                                 ; set new keyboard int proc
+        MOV AX,0x2509                                 ; set new keyboard int proc
         MOV DX,keyboard_int
         PUSH DS
         PUSH CS
         POP DS
-        INT 21H
+        INT 0x21
         POP DS
         RET
 
 remove_keyboard:
         MOV AX,2509H                                 ; restore old keyboard proc
         LDS DX,[CS:old_keyboard_int]
-        INT 21H
+        INT 0x21
         RET
 
 
@@ -124,7 +124,7 @@ timer_int_end:
 
 install_timer:
         MOV AX,351CH                                 ; get old timer int proc
-        INT 21H
+        INT 0x21
         MOV [CS:old_timer_int],BX
         MOV [CS:old_timer_int + 2],ES
         MOV AX,251CH                                 ; set new timer int proc
@@ -132,7 +132,7 @@ install_timer:
         PUSH DS
         PUSH CS
         POP DS
-        INT 21H
+        INT 0x21
         POP DS
         RET
 
@@ -140,7 +140,7 @@ install_timer:
 remove_timer:
         MOV AX,251CH                                 ; restore old timer proc
         LDS DX,[CS:old_timer_int]
-        INT 21H
+        INT 0x21
         RET
 ;-------
 
@@ -616,7 +616,7 @@ random_init:
         PUSH CX
         PUSH DX
         MOV AH,2CH
-        INT 21H
+        INT 0x21
         MOV [random_seed],DX
         POP DX
         POP CX
@@ -1159,9 +1159,9 @@ exit:
         POP DS                                       ; DS = CS (09h need it)
         MOV AH,09H
         MOV DX,text_end
-        INT 21H
+        INT 0x21
         MOV AX,4C00H
-        INT 21H
+        INT 0x21
 ;-------
 
 
