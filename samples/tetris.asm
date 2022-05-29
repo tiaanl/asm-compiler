@@ -19,22 +19,22 @@ pieceSize equ 8
 
 segment data
         videoMode: resw 1
-    	boardState: resb 20 * 10
-    	
-    	nextPieceType: resb 1
-    	pieceType: resb 1
-    	pieceCol: resb 1
-    	piecePos: resb 4
-    	piecePivotPos: resb 1
-    	
-    	temporaryPiecePos: resb 4
-    	
-    	waitTime: resb 1
-    	
-    	score: resw 1
-    	scoreAsString: resb 5
-    	gameOver: db "GAME OVER"
-    	scoreString: db "SCORE" 	
+        boardState: resb 20 * 10
+
+        nextPieceType: resb 1
+        pieceType: resb 1
+        pieceCol: resb 1
+        piecePos: resb 4
+        piecePivotPos: resb 1
+
+        temporaryPiecePos: resb 4
+
+        waitTime: resb 1
+
+        score: resw 1
+        scoreAsString: resb 5
+        gameOver: db "GAME OVER"
+        scoreString: db "SCORE"
 segment text
 ..start:
         ;Initialization

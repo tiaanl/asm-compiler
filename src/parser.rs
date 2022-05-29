@@ -16,7 +16,7 @@ impl From<LexerError> for ParserError {
 }
 
 pub struct Parser<'a> {
-    lexer: crate::lexer::Lexer<'a>,
+    lexer: Lexer<'a>,
 
     /// The current token we are working on.
     token: Token<'a>,
@@ -58,7 +58,10 @@ impl<'a> Parser<'a> {
             }
         }
 
-        println!("next token: {:?}", self.token);
+        // match &self.token {
+        //     Token::NewLine => {}
+        //     _ => println!("next token: {:?}", self.token),
+        // }
 
         Ok(())
     }
@@ -88,43 +91,68 @@ impl<'a> Parser<'a> {
                 // We encountered a blank line or a line that only contained a
                 // comment, so we just continue parsing.
                 self.next_token()?;
-                return Ok(true);
+                Ok(true)
             }
 
-            Token::Identifier(_) => {
-                // We found an identifier, so let's check the following token
-                // to determine if it is a label, mnemonic, etc.
-                match dbg!(self.peek_token()?) {
-                    Token::Punctuation(PunctuationKind::Colon) => {
-                        // If we encounter a label, then we add the label to the parser and
-                        // move onto the next token.
-                        self.parse_label()?;
-                        return Ok(true);
-                    }
+            Token::Identifier(identifier) => {
+                if let Some(operation) = ast::Operation::from_str(identifier) {
+                    self.next_token()?;
+                    let instruction = self.parse_instruction(operation)?;
+                    self.instructions.push(instruction);
+                    Ok(true)
+                } else {
+                    // We found an identifier, so let's check the following token
+                    // to determine if it is a label, mnemonic, etc.
+                    match self.peek_token()? {
+                        Token::Punctuation(PunctuationKind::Colon) => {
+                            // If we encounter a label, then we add the label to the parser and
+                            // move onto the next token.
+                            self.parse_label()?;
+                            Ok(true)
+                        }
 
-                    Token::Identifier(identifier) if identifier == "equ" => {
-                        self.parse_equ()?;
-                        return Ok(true);
-                    }
+                        Token::Identifier(identifier) => match identifier.to_lowercase().as_str() {
+                            "equ" => {
+                                self.parse_equ()?;
+                                Ok(true)
+                            }
 
-                    _ => {}
+                            "db" => {
+                                self.parse_data_bytes()?;
+                                Ok(true)
+                            }
+
+                            "dw" => {
+                                self.parse_data_words()?;
+                                Ok(true)
+                            }
+
+                            "dd" => {
+                                self.parse_data_double_words()?;
+                                Ok(true)
+                            }
+
+                            _ => Err(ParserError::Expected(
+                                self.lexer.pos(),
+                                "equ, db, dw expected",
+                            )),
+                        },
+
+                        _ => Err(ParserError::Expected(
+                            self.lexer.pos(),
+                            "label or instruction expected",
+                        )),
+                    }
                 }
             }
 
-            Token::EndOfFile => return Ok(false),
+            Token::EndOfFile => Ok(false),
 
-            _ => {
-                return Err(ParserError::Expected(
-                    self.lexer.pos(),
-                    "Identifier expected to start a new line",
-                ))
-            }
+            _ => Err(ParserError::Expected(
+                self.lexer.pos(),
+                "Identifier expected to start a new line",
+            )),
         }
-
-        let instruction = self.parse_instruction()?;
-        self.instructions.push(instruction);
-
-        Ok(true)
     }
 
     fn add_label(&mut self, name: &'a str) {
@@ -144,23 +172,18 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn parse_instruction(&mut self) -> Result<ast::Instruction<'a>, ParserError> {
-        match self.token {
-            Token::Identifier(identifier) => {
-                let mnemonic = identifier;
+    fn parse_instruction(
+        &mut self,
+        operation: ast::Operation,
+    ) -> Result<ast::Instruction<'a>, ParserError> {
+        let operands = self.parse_operands()?;
 
-                // Found a mnemonic, so move to the next token.
-                self.next_token()?;
+        self.expect_new_line()?;
 
-                let operands = self.parse_operands()?;
-
-                self.expect_new_line()?;
-
-                Ok(ast::Instruction { mnemonic, operands })
-            }
-
-            _ => Err(ParserError::Expected(self.lexer.pos(), "mnemonic")),
-        }
+        Ok(ast::Instruction {
+            operation,
+            operands,
+        })
     }
 
     fn parse_operands(&mut self) -> Result<ast::Operands<'a>, ParserError> {
@@ -174,9 +197,7 @@ impl<'a> Parser<'a> {
             let destination = self.parse_operand()?;
 
             match self.token {
-                Token::Comment(_) | Token::NewLine | Token::EndOfFile => {
-                    Ok(ast::Operands::Destination(destination))
-                }
+                Token::NewLine | Token::EndOfFile => Ok(ast::Operands::Destination(destination)),
                 Token::Punctuation(PunctuationKind::Comma) => {
                     self.next_token()?;
                     let source = self.parse_operand()?;
@@ -197,33 +218,26 @@ impl<'a> Parser<'a> {
             }
 
             Token::Identifier(identifier) => {
-                if identifier == "byte" || identifier == "word" {
-                    self.parse_memory_operand()
+                if let Some(data_size) = ast::DataSize::from_str(identifier) {
+                    // Consume the data size token.
+                    self.next_token()?;
+                    self.parse_memory_operand(Some(data_size))
                 } else {
                     self.next_token()?;
                     Ok(ast::Operand::Register(identifier))
                 }
             }
 
-            Token::Punctuation(PunctuationKind::OpenBracket) => self.parse_memory_operand(),
+            Token::Punctuation(PunctuationKind::OpenBracket) => self.parse_memory_operand(None),
 
-            _ => Err(ParserError::Expected(self.lexer.pos(), "operand")),
+            _ => Err(ParserError::Expected(self.lexer.pos(), "operand expected")),
         }
     }
 
-    fn parse_memory_operand(&mut self) -> Result<ast::Operand<'a>, ParserError> {
-        let data_size = if let Token::Identifier(identifer) = self.token {
-            self.next_token()?;
-
-            Some(match identifer {
-                "byte" => ast::DataSize::Byte,
-                "word" => ast::DataSize::Word,
-                _ => return Err(ParserError::Expected(self.lexer.pos(), "data size keyword")),
-            })
-        } else {
-            None
-        };
-
+    fn parse_memory_operand(
+        &mut self,
+        data_size: Option<ast::DataSize>,
+    ) -> Result<ast::Operand<'a>, ParserError> {
         if !matches!(self.token, Token::Punctuation(PunctuationKind::OpenBracket)) {
             return Err(ParserError::Expected(
                 self.lexer.pos(),
@@ -233,27 +247,58 @@ impl<'a> Parser<'a> {
 
         self.next_token()?;
 
+        let mut segment_override = None;
+
         let address_or_label = match self.token {
             Token::Identifier(identifier) => {
+                // If the first identifier is a segment, then we have an override.
+                if let Some(segment) = ast::Segment::from_str(identifier) {
+                    segment_override = Some(segment);
+                    self.next_token()?;
+
+                    if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
+                        self.next_token()?;
+                    } else {
+                        return Err(ParserError::Expected(
+                            self.lexer.pos(),
+                            "colon after segment override",
+                        ));
+                    }
+                }
+
                 self.next_token()?;
                 ast::AddressOrLabel::Label(identifier)
             }
             _ => todo!(),
         };
 
-        if !matches!(
-            self.token,
-            Token::Punctuation(PunctuationKind::CloseBracket)
-        ) {
-            return Err(ParserError::Expected(
-                self.lexer.pos(),
-                "closing bracket for memory address",
-            ));
+        loop {
+            match self.token {
+                Token::Punctuation(PunctuationKind::CloseBracket) => break,
+
+                Token::Punctuation(PunctuationKind::Plus)
+                | Token::Punctuation(PunctuationKind::Minus) => {
+                    self.next_token()?;
+                    self.next_token()?;
+                }
+
+                _ => {
+                    return Err(ParserError::Expected(
+                        self.lexer.pos(),
+                        "closing bracket for memory address",
+                    ));
+                }
+            }
         }
 
         self.next_token()?;
 
-        Ok(ast::Operand::DirectAddress(data_size, address_or_label))
+        Ok(ast::Operand::DirectAddress(
+            data_size,
+            address_or_label,
+            segment_override,
+            0,
+        ))
     }
 
     fn parse_equ(&mut self) -> Result<(), ParserError> {
@@ -273,7 +318,83 @@ impl<'a> Parser<'a> {
             _ => todo!(),
         }
 
-        println!("equ: {:?}", name);
+        self.expect_new_line()?;
+
+        Ok(())
+    }
+
+    fn parse_data_bytes(&mut self) -> Result<(), ParserError> {
+        let name = self.token;
+        self.next_token()?;
+
+        debug_assert!(matches!(self.token, Token::Identifier(_)));
+        self.next_token()?;
+
+        match self.token {
+            Token::Literal(LiteralKind::Number(value)) => {
+                self.next_token()?;
+                println!("data bytes: {:?} {}", name, value);
+            }
+
+            _ => {
+                return Err(ParserError::Expected(
+                    self.lexer.pos(),
+                    "constant byte value",
+                ))
+            }
+        }
+
+        self.expect_new_line()?;
+
+        Ok(())
+    }
+
+    fn parse_data_words(&mut self) -> Result<(), ParserError> {
+        let name = self.token;
+        self.next_token()?;
+
+        debug_assert!(matches!(self.token, Token::Identifier(_)));
+        self.next_token()?;
+
+        match self.token {
+            Token::Literal(LiteralKind::Number(value)) => {
+                self.next_token()?;
+                println!("data bytes: {:?} {}", name, value);
+            }
+
+            _ => {
+                return Err(ParserError::Expected(
+                    self.lexer.pos(),
+                    "constant byte value",
+                ))
+            }
+        }
+
+        self.expect_new_line()?;
+
+        Ok(())
+    }
+
+    fn parse_data_double_words(&mut self) -> Result<(), ParserError> {
+        let name = self.token;
+        self.next_token()?;
+
+        debug_assert!(matches!(self.token, Token::Identifier(_)));
+        self.next_token()?;
+
+        match self.token {
+            Token::Literal(LiteralKind::Number(value)) => {
+                self.next_token()?;
+                println!("data bytes: {:?} {}", name, value);
+            }
+
+            _ => {
+                return Err(ParserError::Expected(
+                    self.lexer.pos(),
+                    "constant byte value",
+                ))
+            }
+        }
 
         self.expect_new_line()?;
 
