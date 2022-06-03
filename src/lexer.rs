@@ -388,67 +388,67 @@ fn is_hexadecimal_digit(c: char) -> bool {
 mod tests {
     use super::*;
 
+    macro_rules! assert_next_token {
+        ($lexer:expr, $token:expr) => {
+            assert_eq!($lexer.next_token().unwrap(), $token);
+        };
+    }
+
     #[test]
     fn end_of_file() {
         let mut lexer = Lexer::new("");
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert_next_token!(lexer, Token::EndOfFile);
+        assert_next_token!(lexer, Token::EndOfFile);
+        assert_next_token!(lexer, Token::EndOfFile);
 
         let mut lexer = Lexer::new("test    ");
-        assert!(matches!(lexer.next_token(), Ok(Token::Identifier(_))));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert_next_token!(lexer, Token::Identifier("test"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::EndOfFile);
+        assert_next_token!(lexer, Token::EndOfFile);
+        assert_next_token!(lexer, Token::EndOfFile);
     }
 
     #[test]
     fn skips_whitespace() {
         let mut lexer = Lexer::new(" \t test \rtest2");
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(lexer.next_token().unwrap(), Token::Identifier("test"));
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(lexer.next_token().unwrap(), Token::Identifier("test2"));
-        assert_eq!(lexer.next_token().unwrap(), Token::EndOfFile);
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Identifier("test"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Identifier("test2"));
+        assert_next_token!(lexer, Token::EndOfFile);
     }
 
     #[test]
     fn comments() {
         let mut lexer = Lexer::new("comment ; this is a comment");
-        assert!(matches!(lexer.next_token(), Ok(Token::Identifier(_))));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(
-            lexer.next_token(),
-            Ok(Token::Comment("; this is a comment"))
-        ));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert_next_token!(lexer, Token::Identifier("comment"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Comment("; this is a comment"));
+        assert_next_token!(lexer, Token::EndOfFile);
 
         let mut lexer = Lexer::new("comment ; this is a comment with newline\nid");
-        assert!(matches!(lexer.next_token(), Ok(Token::Identifier(_))));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(
-            lexer.next_token(),
-            Ok(Token::Comment("; this is a comment with newline"))
-        ));
-        assert!(matches!(lexer.next_token(), Ok(Token::NewLine)));
-        assert!(matches!(lexer.next_token(), Ok(Token::Identifier(_))));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert_next_token!(lexer, Token::Identifier("comment"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Comment("; this is a comment with newline"));
+        assert_next_token!(lexer, Token::NewLine);
+        assert_next_token!(lexer, Token::Identifier("id"));
+        assert_next_token!(lexer, Token::EndOfFile);
     }
 
     #[test]
     fn string_literals() {
         let mut lexer = Lexer::new("  'a string literal ;; 123'");
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().unwrap(),
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(
+            lexer,
             Token::Literal(LiteralKind::String("a string literal ;; 123"))
         );
 
         let mut lexer = Lexer::new("  'a string literal  ");
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().err().unwrap(),
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(
+            lexer,
             LexerError {
                 pos: 2,
                 kind: LexerErrorKind::UnterminatedStringLiteral
@@ -456,9 +456,9 @@ mod tests {
         );
 
         let mut lexer = Lexer::new("  'a string literal\n'  ");
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().err().unwrap(),
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(
+            lexer,
             LexerError {
                 pos: 2,
                 kind: LexerErrorKind::UnterminatedStringLiteral
@@ -469,90 +469,37 @@ mod tests {
     #[test]
     fn number_literals() {
         let mut lexer = Lexer::new(" 10 ");
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(
-            lexer.next_token(),
-            Ok(Token::Literal(LiteralKind::Number(10)))
-        ));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(10)));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::EndOfFile);
 
         let mut lexer = Lexer::new(" 0x10 010H 010 0X10 0x ");
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Literal(LiteralKind::Number(16))
-        );
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Literal(LiteralKind::Number(16))
-        );
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Literal(LiteralKind::Number(10))
-        );
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Literal(LiteralKind::Number(0))
-        );
-        assert_eq!(lexer.next_token().unwrap(), Token::Identifier("X10"));
-        assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Literal(LiteralKind::Number(0))
-        );
-        assert_eq!(lexer.next_token().unwrap(), Token::Identifier("x"));
-
-        // let mut lexer = Lexer::new(" 0b10 010B 010 0B10 0b ");
-        // assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        // assert_eq!(
-        //     lexer.next_token().unwrap(),
-        //     Token::Literal(LiteralKind::Number(2))
-        // );
-        // assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        // assert_eq!(
-        //     lexer.next_token().unwrap(),
-        //     Token::Literal(LiteralKind::Number(2))
-        // );
-        // assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        // assert_eq!(
-        //     lexer.next_token().unwrap(),
-        //     Token::Literal(LiteralKind::Number(2))
-        // );
-        // assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        // assert_eq!(
-        //     lexer.next_token().unwrap(),
-        //     Token::Literal(LiteralKind::Number(0))
-        // );
-        // assert_eq!(lexer.next_token().unwrap(), Token::Identifier("B10"));
-        // assert_eq!(lexer.next_token().unwrap(), Token::Whitespace);
-        // assert_eq!(
-        //     lexer.next_token().unwrap(),
-        //     Token::Literal(LiteralKind::Number(0))
-        // );
-        // assert_eq!(lexer.next_token().unwrap(), Token::Identifier("b"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(16)));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(16)));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer,Token::Literal(LiteralKind::Number(10)));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(0)));
+        assert_next_token!(lexer, Token::Identifier("X10"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(0)));
+        assert_next_token!(lexer, Token::Identifier("x"));
     }
 
     #[test]
     fn identifier() {
         let mut lexer = Lexer::new("test _te_st test123 1tst");
-        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("test"))));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(
-            lexer.next_token(),
-            Ok(Token::Identifier("_te_st"))
-        ));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(matches!(
-            lexer.next_token(),
-            Ok(Token::Identifier("test123"))
-        ));
-        assert!(matches!(lexer.next_token(), Ok(Token::Whitespace)));
-        assert!(!matches!(lexer.next_token(), Ok(Token::Identifier(_))));
-        assert!(matches!(lexer.next_token(), Ok(Token::Identifier("tst"))));
-        assert!(matches!(lexer.next_token(), Ok(Token::EndOfFile)));
+        assert_next_token!(lexer, Token::Identifier("test"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Identifier("_te_st"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Identifier("test123"));
+        assert_next_token!(lexer, Token::Whitespace);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(1)));
+        assert_next_token!(lexer, Token::Identifier("tst"));
+        assert_next_token!(lexer, Token::EndOfFile);
     }
 }
