@@ -75,14 +75,12 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token<'a>, LexerError> {
-        let mut chars = self.source[self.pos..].chars();
-
-        let first = match chars.next() {
+        let first = match self.source[self.pos..].chars().next() {
             Some(c) => c,
             None => return Ok(Token::EndOfFile),
         };
 
-        let token = match first {
+        match first {
             ';' => {
                 let start = self.pos;
                 match self.source[start..].find(|c| c == '\n') {
@@ -139,10 +137,7 @@ impl<'a> Lexer<'a> {
             '*' => Ok(self.punctuation(PunctuationKind::Multiply)),
 
             c => Err(LexerError::new(self.pos, LexerErrorKind::InvalidToken(c))),
-        };
-
-        // dbg!(token)
-        token
+        }
     }
 
     #[inline(always)]
@@ -220,7 +215,7 @@ impl<'a> Lexer<'a> {
             let found = if let Some(found) = self.source[self.pos..].find(|c| !is_number(c)) {
                 found
             } else {
-                1
+                self.source.len() - start
             };
 
             self.pos += found;
@@ -323,6 +318,44 @@ impl<'a> Lexer<'a> {
                 }
             }
         }
+    }
+
+    pub fn source_line_current(&self, path: Option<&str>) -> String {
+        self.source_line_at_pos(self.pos, path)
+    }
+
+    pub fn source_line_at_pos(&self, pos: usize, path: Option<&str>) -> String {
+        let prev_new_line = if let Some(found) = self.source[..pos].rfind('\n') {
+            found + 1
+        } else {
+            0
+        };
+
+        let next_new_line = if let Some(found) = self.source[pos..].find('\n') {
+            pos + found
+        } else {
+            self.source.len()
+        };
+
+        let fragment = &self.source[prev_new_line..next_new_line];
+
+        let line = self.source[0..pos].matches('\n').count() + 1;
+        let column = pos - prev_new_line;
+
+        let mut result = String::new();
+
+        if let Some(path) = path {
+            result += format!("{}:{}:{}\n", path, line, column + 1).as_str();
+        }
+
+        result += fragment;
+        result += "\n";
+        for _ in 0..column {
+            result += " ";
+        }
+        result += "^";
+
+        result
     }
 }
 

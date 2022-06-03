@@ -2,11 +2,12 @@ use crate::{
     ast,
     lexer::{Lexer, LexerError, LiteralKind, PunctuationKind, Token},
 };
+use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum ParserError {
     LexerError(LexerError),
-    Expected(usize, &'static str),
+    Expected(usize, String),
 }
 
 impl From<LexerError> for ParserError {
@@ -15,41 +16,31 @@ impl From<LexerError> for ParserError {
     }
 }
 
-#[derive(Debug)]
-pub enum Data {
-    Byte(Vec<u8>),
-    Word(Vec<u8>),
-    DoubleWord(Vec<u8>),
-}
-
-#[derive(Debug)]
-pub enum Line<'a> {
-    Label(&'a str),
-    Equ(i32),
-    Instruction(ast::Instruction<'a>),
-    Data(Data),
-    EndOfFile,
-}
-
 pub struct Parser<'a> {
     lexer: Lexer<'a>,
+    last_lexer_pos: usize,
 
     /// The current token we are working on.
     token: Token<'a>,
+
+    block: ast::Block<'a>,
 }
 
 impl<'a> Parser<'a> {
     pub fn new(source: &'a str) -> Self {
         Self {
             lexer: Lexer::new(source),
+            last_lexer_pos: 0,
             token: Token::EndOfFile,
+            block: ast::Block {
+                lines: Vec::new(),
+                labels: HashMap::new(),
+            },
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<Line<'a>>, ParserError> {
+    pub fn parse(&mut self) -> Result<(), ParserError> {
         self.next_token()?;
-
-        let mut lines = vec![];
 
         loop {
             // Skip blank lines.
@@ -57,22 +48,21 @@ impl<'a> Parser<'a> {
                 self.next_token()?;
             }
 
-            match self.parse_line()? {
-                Line::EndOfFile => break,
-
-                l => {
-                    lines.push(l);
-                }
+            if !self.parse_line()? {
+                break;
             }
         }
 
-        Ok(lines)
+        Ok(())
     }
 
     fn next_token(&mut self) -> Result<(), LexerError> {
+        self.last_lexer_pos = self.lexer.pos();
+
         loop {
             match self.lexer.next_token()? {
                 Token::Comment(_) | Token::Whitespace => {
+                    self.last_lexer_pos = self.lexer.pos();
                     continue;
                 }
                 token => {
@@ -90,78 +80,100 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    // fn peek_token(&self) -> Result<Token<'a>, LexerError> {
-    //     let mut lexer = self.lexer;
-    //     loop {
-    //         match lexer.next_token() {
-    //             Ok(Token::Whitespace) | Ok(Token::Comment(_)) => continue,
-    //             r => return r,
-    //         }
-    //     }
-    // }
-
-    /// The current token should be a new line and if it is, consume it.
-    fn expect_new_line(&mut self) -> Result<(), ParserError> {
-        if let Token::NewLine | Token::EndOfFile = self.token {
+    /// The current token is required to be a new line.  If it is, then consume it, otherwise we
+    /// report an error.
+    fn require_new_line(&mut self) -> Result<(), ParserError> {
+        if let Token::NewLine = self.token {
+            self.next_token()?;
+            Ok(())
+        } else if let Token::EndOfFile = self.token {
             Ok(())
         } else {
-            Err(ParserError::Expected(self.lexer.pos(), "Expected new line"))
+            Err(self.expected("Expected new line".to_owned()))
         }
     }
 
-    fn parse_line(&mut self) -> Result<Line<'a>, ParserError> {
-        match self.token {
-            Token::Identifier(identifier) => {
-                if let Some(operation) = ast::Operation::from_str(identifier) {
-                    self.next_token()?;
-                    let instruction = self.parse_instruction(operation)?;
-                    Ok(Line::Instruction(instruction))
-                } else {
-                    match identifier.to_lowercase().as_str() {
-                        "equ" => {
-                            self.next_token()?;
-                            self.parse_equ()
-                        }
+    fn parse_line(&mut self) -> Result<bool, ParserError> {
+        println!(
+            "parse_line:\n{}",
+            self.lexer
+                .source_line_at_pos(self.last_lexer_pos, Some("mem"))
+        );
 
-                        "db" => {
-                            self.next_token()?;
-                            self.parse_data::<u8>()
-                        }
+        loop {
+            match self.token {
+                Token::Identifier(identifier) => {
+                    if let Some(operation) = ast::Operation::from_str(identifier) {
+                        self.next_token()?;
+                        let instruction = self.parse_instruction(operation)?;
+                        self.block.lines.push(ast::Line::Instruction(instruction));
+                        return Ok(true);
+                    } else {
+                        match identifier.to_lowercase().as_str() {
+                            "equ" => {
+                                self.next_token()?;
+                                self.parse_equ()?;
+                            }
 
-                        "dw" => {
-                            self.next_token()?;
-                            self.parse_data::<u16>()
-                        }
+                            "db" => {
+                                self.next_token()?;
+                                let line = self.parse_data::<u8>()?;
+                                self.block.lines.push(line);
+                                return Ok(true);
+                            }
 
-                        "dd" => {
-                            self.next_token()?;
-                            self.parse_data::<u32>()
-                        }
+                            "dw" => {
+                                self.next_token()?;
+                                let line = self.parse_data::<u16>()?;
+                                self.block.lines.push(line);
+                                return Ok(true);
+                            }
 
-                        _ => {
-                            self.next_token()?;
-                            self.parse_label(identifier)
+                            "dd" => {
+                                self.next_token()?;
+                                let line = self.parse_data::<u32>()?;
+                                self.block.lines.push(line);
+                                return Ok(true);
+                            }
+
+                            _ => {
+                                // Consume the token that holds the label.
+                                self.next_token()?;
+
+                                let label = self.parse_label(identifier)?;
+                                self.block.labels.insert(label, self.block.lines.len());
+
+                                return Ok(true);
+                            }
                         }
                     }
                 }
+
+                Token::EndOfFile => return Ok(false),
+
+                _ => {
+                    return Err(self.expected(format!(
+                        "Identifier expected at the start of a new line. Found {:?}\n{}",
+                        self.token,
+                        self.lexer.source_line_current(Some("mem"))
+                    )))
+                }
             }
-
-            Token::EndOfFile => Ok(Line::EndOfFile),
-
-            _ => Err(ParserError::Expected(
-                self.lexer.pos(),
-                "Identifier expected to start a new line",
-            )),
         }
     }
 
-    fn parse_label(&mut self, name: &'a str) -> Result<Line<'a>, ParserError> {
+    fn parse_label(&mut self, name: &'a str) -> Result<&'a str, ParserError> {
         // Skip the optional colon after a label.
         if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
             self.next_token()?;
+
+            // If the token after the ":" is a new_line, then we should consume it as well.
+            if matches!(self.token, Token::NewLine) {
+                self.next_token()?;
+            }
         }
 
-        Ok(Line::Label(name))
+        Ok(name)
     }
 
     fn parse_instruction(
@@ -170,7 +182,7 @@ impl<'a> Parser<'a> {
     ) -> Result<ast::Instruction<'a>, ParserError> {
         let operands = self.parse_operands()?;
 
-        self.expect_new_line()?;
+        self.require_new_line()?;
 
         Ok(ast::Instruction {
             operation,
@@ -197,7 +209,11 @@ impl<'a> Parser<'a> {
                     Ok(ast::Operands::DestinationAndSource(destination, source))
                 }
 
-                _ => Err(ParserError::Expected(self.lexer.pos(), "something here?")),
+                _ => {
+                    let source = self.lexer.source_line_current(Some("mem"));
+                    println!("{}", source);
+                    Err(self.expected(format!("An unexpected token was encountered: {:?}", source)))
+                }
             }
         }
     }
@@ -222,7 +238,7 @@ impl<'a> Parser<'a> {
 
             Token::Punctuation(PunctuationKind::OpenBracket) => self.parse_memory_operand(None),
 
-            _ => Err(ParserError::Expected(self.lexer.pos(), "operand expected")),
+            _ => Err(self.expected("operand expected".to_owned())),
         }
     }
 
@@ -231,10 +247,7 @@ impl<'a> Parser<'a> {
         data_size: Option<ast::DataSize>,
     ) -> Result<ast::Operand<'a>, ParserError> {
         if !matches!(self.token, Token::Punctuation(PunctuationKind::OpenBracket)) {
-            return Err(ParserError::Expected(
-                self.lexer.pos(),
-                "opening bracket for direct memory address",
-            ));
+            return Err(self.expected("opening bracket for direct memory address".to_owned()));
         }
 
         self.next_token()?;
@@ -251,10 +264,7 @@ impl<'a> Parser<'a> {
                     if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
                         self.next_token()?;
                     } else {
-                        return Err(ParserError::Expected(
-                            self.lexer.pos(),
-                            "colon after segment override",
-                        ));
+                        return Err(self.expected("colon after segment override".to_owned()));
                     }
                 }
 
@@ -275,10 +285,7 @@ impl<'a> Parser<'a> {
                 }
 
                 _ => {
-                    return Err(ParserError::Expected(
-                        self.lexer.pos(),
-                        "closing bracket for memory address",
-                    ));
+                    return Err(self.expected("closing bracket for memory address".to_owned()));
                 }
             }
         }
@@ -293,27 +300,24 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_equ(&mut self) -> Result<Line<'a>, ParserError> {
+    fn parse_equ(&mut self) -> Result<(), ParserError> {
         let value = match self.token {
             Token::Literal(LiteralKind::Number(number)) => {
                 self.next_token()?;
                 number
             }
 
-            _ => {
-                return Err(ParserError::Expected(
-                    self.lexer.pos(),
-                    "constant value expected.",
-                ))
-            }
+            _ => return Err(self.expected("Constant value expected.".to_owned())),
         };
 
-        self.expect_new_line()?;
+        self.require_new_line()?;
 
-        Ok(Line::Equ(value))
+        self.block.lines.push(ast::Line::Constant(value));
+
+        Ok(())
     }
 
-    fn parse_data<T>(&mut self) -> Result<Line<'a>, ParserError> {
+    fn parse_data<T>(&mut self) -> Result<ast::Line<'a>, ParserError> {
         let mut data = Vec::<u8>::new();
 
         loop {
@@ -343,15 +347,25 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.expect_new_line()?;
+        self.require_new_line()?;
 
         match std::mem::size_of::<T>() {
-            1 => Ok(Line::Data(Data::Byte(data as Vec<u8>))),
-            2 => Ok(Line::Data(Data::Word(data as Vec<u8>))),
-            4 => Ok(Line::Data(Data::DoubleWord(data as Vec<u8>))),
+            1 => Ok(ast::Line::Data(ast::Data::Byte(data as Vec<u8>))),
+            2 => Ok(ast::Line::Data(ast::Data::Word(data as Vec<u8>))),
+            4 => Ok(ast::Line::Data(ast::Data::DoubleWord(data as Vec<u8>))),
             _ => unreachable!("Invalid data size"),
         }
     }
+
+    fn expected(&self, message: String) -> ParserError {
+        ParserError::Expected(self.last_lexer_pos, message)
+    }
+}
+
+pub fn parse(input: &str) -> Result<ast::Block, ParserError> {
+    let mut parser = Parser::new(input);
+    parser.parse()?;
+    Ok(parser.block)
 }
 
 #[cfg(test)]
@@ -360,6 +374,46 @@ mod tests {
 
     #[test]
     fn blank_lines() {
-        Parser::new("").parse();
+        let ast::Block { lines, .. } = parse("").unwrap();
+        assert_eq!(lines, vec![]);
+
+        let ast::Block { lines, .. } = parse("\n\n").unwrap();
+        assert_eq!(lines, vec![]);
+    }
+
+    #[test]
+    fn label_and_instruction() {
+        let ast::Block { lines, labels } = parse("start hlt").unwrap();
+        assert_eq!(
+            lines,
+            vec![ast::Line::Instruction(ast::Instruction {
+                operation: ast::Operation::HLT,
+                operands: ast::Operands::None,
+            })]
+        );
+        assert_eq!(labels, HashMap::from([("start", 0)]),);
+    }
+
+    #[test]
+    fn multiple_labels() {
+        let ast::Block { lines, labels } = parse("start begin: begin2:hlt").unwrap();
+        assert_eq!(
+            lines,
+            vec![ast::Line::Instruction(ast::Instruction {
+                operation: ast::Operation::HLT,
+                operands: ast::Operands::None,
+            })]
+        );
+        assert_eq!(
+            labels,
+            HashMap::from([("start", 0), ("begin", 0), ("begin2", 0)]),
+        );
+    }
+
+    #[test]
+    fn constants() {
+        let block = parse("label equ 42").unwrap();
+        assert_eq!(block.lines, vec![ast::Line::Constant(42)]);
+        assert_eq!(block.labels, HashMap::from([("label", 0)]));
     }
 }

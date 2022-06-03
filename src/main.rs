@@ -1,9 +1,7 @@
 mod ast;
-mod compiler;
 mod lexer;
 mod parser;
 
-use crate::compiler::compile;
 use clap::Parser as ClapParser;
 use lexer::LexerError;
 use parser::Parser;
@@ -92,10 +90,11 @@ fn main() {
     //     }
     // }
 
-    let mut parser = Parser::new(source);
-    match parser.parse() {
+    match Parser::new(source).parse() {
         Ok(lines) => {
-            dbg!(compile(lines.as_slice()));
+            // dbg!(compile(lines.as_slice()));
+            // lines.iter().for_each(|line| println!("{}", line));
+            dbg!(lines);
         }
         Err(err) => match err {
             parser::ParserError::LexerError(err) => {

@@ -1,3 +1,7 @@
+use std::collections::HashMap;
+use std::fmt::Formatter;
+
+#[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operation {
     // Data transfer
@@ -297,4 +301,40 @@ pub enum Operands<'a> {
 pub struct Instruction<'a> {
     pub operation: Operation,
     pub operands: Operands<'a>,
+}
+
+impl<'a> std::fmt::Display for Instruction<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{:?} {:?}", self.operation, self.operands)
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Data {
+    Byte(Vec<u8>),
+    Word(Vec<u8>),
+    DoubleWord(Vec<u8>),
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub enum Line<'a> {
+    Instruction(Instruction<'a>),
+    Data(Data),
+    Constant(i32),
+}
+
+impl<'a> std::fmt::Display for Line<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Line::Instruction(instruction) => write!(f, "  {}", instruction),
+            Line::Data(data) => write!(f, "{:?}", data),
+            Line::Constant(value) => write!(f, "equ {}", value),
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+pub struct Block<'a> {
+    pub lines: Vec<Line<'a>>,
+    pub labels: HashMap<&'a str, usize>,
 }
