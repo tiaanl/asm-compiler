@@ -15,29 +15,29 @@
 ; nasm -o snake.com -fbin snake.asm
 
 
-VGA_MEM                 equ     0A000H  ; video memory bank
-SCR_MEM                 equ     09000H  ; last 64kB segment
-FONT_SEG                equ     0F000H  ; ROM-Font segment
-FONT_OFF                equ     0FA6EH  ; ROM-Font offset
+VGA_MEM equ      0A000H                          ; video memory bank
+SCR_MEM equ      09000H                          ; last 64kB segment
+FONT_SEG equ     0F000H                          ; ROM-Font segment
+FONT_OFF equ     0FA6EH                          ; ROM-Font offset
 
 
-TRANSPARENT_COLOR       equ     0
+TRANSPARENT_COLOR equ 0
 
 
-KEY_ESC                 equ      1
-KEY_UP                  equ     72
-KEY_DOWN                equ     80
-KEY_LEFT                equ     75
-KEY_RIGHT               equ     77
-KEY_A                   equ     30
-KEY_P                   equ     25
+KEY_ESC equ           1
+KEY_UP equ           72
+KEY_DOWN equ         80
+KEY_LEFT equ         75
+KEY_RIGHT equ        77
+KEY_A equ            30
+KEY_P equ            25
 
 
-        ; CPU 186
-        ; BITS 16
+        CPU 186
+        BITS 16
 
 
-        ; ORG 0x100
+        ORG 100H
         JMP main
 
 
@@ -45,7 +45,7 @@ KEY_P                   equ     25
 keyboard_int:
         STI
         PUSH AX
-        IN AL,0x60                                    ; get key from keyboard port
+        IN AL,60H                                    ; get key from keyboard port
         MOV [CS:lastkey],AL
         POP AX
 
@@ -68,31 +68,31 @@ check_keys_2:
         POP AX
 
         PUSH AX
-        MOV AL,0x20                                   ; send end of irq
-        OUT 0x20,AL
+        MOV AL,20H                                   ; send end of irq
+        OUT 20H,AL
         POP AX
 
         CLI
         IRET
 
 install_keyboard:
-        MOV AX,0x3509                                 ; get old keyboard int proc
-        INT 0x21
+        MOV AX,3509H                                 ; get old keyboard int proc
+        INT 21H
         MOV [CS:old_keyboard_int],BX
         MOV [CS:old_keyboard_int + 2],ES
-        MOV AX,0x2509                                 ; set new keyboard int proc
+        MOV AX,2509H                                 ; set new keyboard int proc
         MOV DX,keyboard_int
         PUSH DS
         PUSH CS
         POP DS
-        INT 0x21
+        INT 21H
         POP DS
         RET
 
 remove_keyboard:
-        MOV AX,02509H                                 ; restore old keyboard proc
+        MOV AX,2509H                                 ; restore old keyboard proc
         LDS DX,[CS:old_keyboard_int]
-        INT 0x21
+        INT 21H
         RET
 
 
@@ -123,24 +123,24 @@ timer_int_end:
 
 
 install_timer:
-        MOV AX,0351CH                                 ; get old timer int proc
-        INT 0x21
+        MOV AX,351CH                                 ; get old timer int proc
+        INT 21H
         MOV [CS:old_timer_int],BX
         MOV [CS:old_timer_int + 2],ES
-        MOV AX,0251CH                                 ; set new timer int proc
+        MOV AX,251CH                                 ; set new timer int proc
         MOV DX,timer_int
         PUSH DS
         PUSH CS
         POP DS
-        INT 0x21
+        INT 21H
         POP DS
         RET
 
 
 remove_timer:
-        MOV AX,0251CH                                 ; restore old timer proc
+        MOV AX,251CH                                 ; restore old timer proc
         LDS DX,[CS:old_timer_int]
-        INT 0x21
+        INT 21H
         RET
 ;-------
 
@@ -148,13 +148,13 @@ remove_timer:
 ; gfx routines
 init13h:
         MOV AX,0013H                                   ; set 320x200 8bit video mode
-        INT 010H
+        INT 10H
         RET
 
 
 close13h:
         MOV AX,0003H                                   ; restore text mode
-        INT 010H
+        INT 10H
         RET
 
 
@@ -356,7 +356,7 @@ draw_transparent_sprite_x_axis:
         CMP AL,TRANSPARENT_COLOR
         JE draw_transparent_sprite_x_next
         MOV [ES:DI],AL
-draw_transparent_sprite_x_next:
+draw_transparent_sprite_x_next
         INC DI
         INC BX
         LOOP draw_transparent_sprite_x_axis
@@ -559,7 +559,7 @@ draw_integer_1:
         SUB DX,AX
         POP BX
         POP AX
-        ADD CH,030H  ; '0'  TODO: Handle single character literals
+        ADD CH,'0'
         MOV CL,[draw_integer_cl]
         CALL draw_char
         ADD AX,8
@@ -615,8 +615,8 @@ random_init:
         PUSH AX
         PUSH CX
         PUSH DX
-        MOV AH,02CH
-        INT 0x21
+        MOV AH,2CH
+        INT 21H
         MOV [random_seed],DX
         POP DX
         POP CX
@@ -626,7 +626,7 @@ random_init:
 
 random_gen:                                          ; return: CL - random byte
         MOV CX,[random_seed]
-        IMUL CX,013A7H
+        IMUL CX,13A7H
         INC CX
         MOV [random_seed],CX
         MOV CL,CH
@@ -655,23 +655,23 @@ delay_1:
 sound_on:
         PUSH AX
         MOV AL,0B6H
-        OUT 043H,AL
+        OUT 43H,AL
         MOV AX,11930
-        OUT 042H,AL
+        OUT 42H,AL
         MOV AL,AH
-        OUT 042H,AL
-        IN AL,061H
+        OUT 42H,AL
+        IN AL,61H
         OR AL,3
-        OUT 061H,AL
+        OUT 61H,AL
         POP AX
         RET
 
 
 sound_off:
         PUSH AX
-        IN AL,061H
+        IN AL,61H
         AND AL,252
-        OUT 061H,AL
+        OUT 61H,AL
         POP AX
         RET
 
@@ -877,11 +877,11 @@ detect_collisions_1:
 ; detect collision with border and decrase lives
         CMP WORD [snake],0                           ; coll. with left border
         JE detect_collisions_dead
-        CMP WORD [snake],315                         ; coll. with right border
+        CMP WORD [snake],320 - 5                     ; coll. with right border
         JE detect_collisions_dead
         CMP WORD [snake + 2],15                      ; coll. with top border
         JE detect_collisions_dead
-        CMP WORD [snake + 2],195                     ; coll. with bottom border
+        CMP WORD [snake + 2],200 - 5                 ; coll. with bottom border
         JE detect_collisions_dead
 ; detect head collision with body
         MOV BX,snake
@@ -941,15 +941,15 @@ game_loop:
 ; draw top frame
         MOV WORD [SX],0
         MOV WORD [SY],0
-        MOV CX,64
+        MOV CX,320 / 5
 draw_frame_top:
         CALL draw_sprite
         ADD WORD [SX],5
         LOOP draw_frame_top
 ; draw bottom frame
         MOV WORD [SX],0
-        MOV WORD [SY],195
-        MOV CX,64
+        MOV WORD [SY],200 - 5
+        MOV CX,320 / 5
 draw_frame_bottom:
         CALL draw_sprite
         ADD WORD [SX],5
@@ -957,15 +957,15 @@ draw_frame_bottom:
 ; draw left frame
         MOV WORD [SX],0
         MOV WORD [SY],0
-        MOV CX,40
+        MOV CX,200 / 5
 draw_frame_left:
         CALL draw_sprite
         ADD WORD [SY],5
         LOOP draw_frame_left
 ; draw_frame_right
-        MOV WORD [SX],315
+        MOV WORD [SX],320 - 5
         MOV WORD [SY],0
-        MOV CX,40
+        MOV CX,200 / 5
 draw_frame_right:
         CALL draw_sprite
         ADD WORD [SY],5
@@ -973,15 +973,15 @@ draw_frame_right:
 ; draw top bar
         MOV WORD [PX1],5
         MOV WORD [PY1],5
-        MOV WORD [PX2],314
-        MOV WORD [PY2],19
+        MOV WORD [PX2],320 - 5 - 1
+        MOV WORD [PY2],5 + 13 + 1
         MOV BYTE [PCL],43
         CALL rectfill
         MOV BYTE [PCL],53
         CALL rect
 ; draw logo
         MOV BX,sprite_logo
-        MOV WORD [SX],133
+        MOV WORD [SX],320 / 2 - 54 / 2
         MOV WORD [SY],7
         MOV WORD [SW],54
         MOV WORD [SH],11
@@ -991,11 +991,11 @@ draw_frame_right:
         MOV WORD [SW],13
         MOV WORD [SH],11
         MOV WORD [SY],7
-        MOV WORD [SX],297
+        MOV WORD [SX],320 - 5 - 18
         CALL draw_transparent_sprite
-        MOV WORD [SX],279
+        MOV WORD [SX],320 - 5 - 18 - 18
         CALL draw_transparent_sprite
-        MOV WORD [SX],261
+        MOV WORD [SX],320 - 5 - 18 - 18 - 18
         CALL draw_transparent_sprite
         MOV BX,sprite_snake_live_1
         CMP BYTE [live_counter],0                    ; if game over
@@ -1004,15 +1004,15 @@ draw_frame_right:
 counter_game_over:
         CALL game_over
 counter_draw_live:
-        MOV WORD [SX],297
+        MOV WORD [SX],320 - 5 - 18
         CALL draw_transparent_sprite
         CMP BYTE [live_counter],2
         JB draw_live_counter_end
-        MOV WORD [SX],279
+        MOV WORD [SX],320 - 5 - 18 - 18
         CALL draw_transparent_sprite
         CMP BYTE [live_counter],3
         JB draw_live_counter_end
-        MOV WORD [SX],261
+        MOV WORD [SX],320 - 5 - 18 - 18 - 18
         CALL draw_transparent_sprite
 draw_live_counter_end:
 ; draw score
@@ -1092,22 +1092,22 @@ key_p:
 key_a:
 ; print info
         MOV CL,91
-        MOV AX,140
+        MOV AX,320 / 2 - 5 * 8 / 2
         MOV BX,80
         MOV DX,text_about1
         CALL draw_text
         MOV CL,32
-        MOV AX,116
+        MOV AX,320 / 2 - 11 * 8 / 2
         MOV BX,90
         MOV DX,text_about2
         CALL draw_text
         MOV CL,32
-        MOV AX,112
+        MOV AX,320 / 2 - 12 * 8 / 2
         MOV BX,100
         MOV DX,text_about3
         CALL draw_text
         MOV CL,63
-        MOV AX,104
+        MOV AX,320 / 2 - 14 * 8 / 2
         MOV BX,110
         MOV DX,text_about4
         CALL draw_text
@@ -1122,7 +1122,7 @@ game_loop_end:
         JMP game_loop
 game_pause:
         MOV CL,91
-        MOV AX,140
+        MOV AX,320 / 2 - 5 * 8 / 2
         MOV BX,95
         MOV DX,text_pause
         CALL draw_text
@@ -1131,7 +1131,7 @@ game_pause:
         RET
 game_over:
         MOV CL,128
-        MOV AX,124
+        MOV AX,320 / 2 - 9 * 8 / 2
         MOV BX,95
         MOV DX,text_game_over
         CALL draw_text
@@ -1140,11 +1140,11 @@ game_over:
         JMP exit
 winner:
         MOV CL,160
-        MOV AX,52
+        MOV AX,320 / 2 - 27 * 8 / 2
         MOV BX,90
         MOV DX,text_winner1
         CALL draw_text
-        MOV AX,56
+        MOV AX,320 / 2 - 26 * 8 / 2
         MOV BX,100
         MOV DX,text_winner2
         CALL draw_text
@@ -1159,9 +1159,9 @@ exit:
         POP DS                                       ; DS = CS (09h need it)
         MOV AH,09H
         MOV DX,text_end
-        INT 021H
-        MOV AX,04C00H
-        INT 021H
+        INT 21H
+        MOV AX,4C00H
+        INT 21H
 ;-------
 
 
@@ -1172,7 +1172,7 @@ old_timer_int                          DD 0
 screen_buffer                          DD 0
 
 lastkey                                DB 0
-; key                                    TIMES 128 DB 0
+key                                    TIMES 128 DB 0
 
 timer_counter                          DB 0          ; 18 clock ticks
 timer_delay                            DB 1          ; 0 when 18 ticks
@@ -1184,7 +1184,7 @@ score                                  DW 0          ; game points
 snakes_food_x                          DW 160
 snakes_food_y                          DW 100
 
-; snake                                  TIMES 120*2 DW 0
+snake                                  TIMES 120*2 DW 0
 snake_len                              DW 4
 snake_max_len                          DW 120
 snake_vector                           DB 0          ; 0 = no move, 1 = move up, 2 = move down, 3 = move left, 4 = move right

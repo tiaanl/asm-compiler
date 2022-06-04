@@ -1,3 +1,41 @@
+#[repr(u8)]
+#[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
+enum Base {
+    Binary = 2,
+    Octal = 8,
+    Decimal = 10,
+    Hexadecimal = 16,
+}
+
+impl Base {
+    #[inline(always)]
+    fn try_from_char(c: char) -> Result<Self, ()> {
+        Ok(match c {
+            'b' | 'B' => Self::Binary,
+            'o' | 'O' => Self::Octal,
+            'd' | 'D' => Self::Decimal,
+            'h' | 'H' => Self::Hexadecimal,
+            _ => return Err(()),
+        })
+    }
+
+    fn detect_highest_for(s: &str) -> Self {
+        let mut base = Self::Binary;
+
+        for c in s.chars() {
+            if c > '1' {
+                base = Self::Octal;
+            } else if c > '8' {
+                base = Self::Decimal
+            } else if c > '9' {
+                base = Self::Hexadecimal
+            }
+        }
+
+        base
+    }
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LiteralKind<'a> {
     Number(i32),
@@ -64,6 +102,37 @@ pub struct Lexer<'a> {
     pos: usize,
 }
 
+macro_rules! number_with_base {
+    ($self:expr, $prefix:expr, $is_digit:ident, $base:expr) => {{
+        debug_assert!($self.source[$self.pos..].starts_with('0'));
+        debug_assert!($self.source[$self.pos + 1..].starts_with($prefix));
+
+        // Only consume the '0'.
+        $self.pos += 1;
+        let start = $self.pos;
+
+        let found = match $self.source[$self.pos + 1..].find(|c| !$is_digit(c)) {
+            Some(found) => found,
+            None => $self.source.len() - $self.pos - 1,
+        };
+
+        // If no additional characters were found, then we return the '0' character as the literal
+        // only.
+        if found == 0 {
+            return Token::Literal(LiteralKind::Number(0));
+        }
+
+        // We have additional characters, so we can consume the prefix character and the found
+        // digits.
+        $self.pos += found + 1;
+
+        // We can unwrap here, because we already made sure we only have valid characters.
+        #[allow(clippy::from_str_radix_10)]
+        let value = i32::from_str_radix(&$self.source[start + 1..$self.pos], $base).unwrap();
+        Token::Literal(LiteralKind::Number(value))
+    }};
+}
+
 impl<'a> Lexer<'a> {
     pub fn new(source: &'a str) -> Self {
         Self { source, pos: 0 }
@@ -105,7 +174,7 @@ impl<'a> Lexer<'a> {
                 Ok(Token::Whitespace)
             }
 
-            c if is_number(c) => Ok(self.number(c)),
+            c if is_decimal_digit(c) => Ok(self.number(c)),
 
             c if is_identifier_first(c) => {
                 let start = self.pos;
@@ -151,140 +220,89 @@ impl<'a> Lexer<'a> {
         self.single_char_token(Token::Punctuation(punctuation))
     }
 
-    // fn decimal_number(&mut self, start: usize) -> Token<'a> {
-    //     self.pos += match self.source[start..].find(|c| !is_number(c)) {
-    //         Some(found) => found,
-    //         None => self.source.len() - start,
-    //     };
-    //
-    //     // dbg!(&self.source[start..self.pos]);
-    //
-    //     Token::Literal(LiteralKind::Number(
-    //         self.source[start..self.pos].parse().unwrap(),
-    //     ))
-    // }
-
-    // fn hexadecimal_number(&mut self, start: usize) -> Token<'a> {
-    //     self.pos += match self.source[start..].find(|c| !is_hexadecimal_digit(c)) {
-    //         Some(found) => found,
-    //         None => self.source.len() - start,
-    //     };
-    //
-    //     Token::Literal(LiteralKind::Number(
-    //         i32::from_str_radix(&self.source[start..self.pos], 16).unwrap(),
-    //     ))
-    // }
-
-    // fn binary_number(&mut self, start: usize) -> Token<'a> {
-    //     self.pos += match self.source[start..].find(|c| !is_number(c)) {
-    //         Some(found) => found,
-    //         None => self.source.len() - start,
-    //     };
-    //
-    //     Token::Literal(LiteralKind::Number(
-    //         i32::from_str_radix(&self.source[start..self.pos], 2).unwrap(),
-    //     ))
-    // }
-
     fn number(&mut self, first_char: char) -> Token<'a> {
-        // The caller checked the first character and passed it to us and should be a number.
-        debug_assert!(is_number(first_char));
+        debug_assert!(is_decimal_digit(first_char));
 
         if first_char == '0' {
-            if let Some(second) = self.source[self.pos + 1..].chars().next() {
-                let (begin, end, radix) = match second {
-                    'x' => self.number_literal_with_prefix(second),
-                    'b' => self.number_literal_with_prefix(second),
-                    _ => self.number_literal_with_suffix(),
-                };
-
-                if begin == end {
-                    Token::Literal(LiteralKind::Number(0))
-                } else {
-                    Token::Literal(LiteralKind::Number(
-                        i32::from_str_radix(&self.source[begin..end], radix).unwrap(),
-                    ))
-                }
-            } else {
-                // An [EndOfFile] here means that one the 0 is available.
-                Token::Literal(LiteralKind::Number(0))
-            }
+            self.number_literal_with_prefix()
         } else {
-            let start = self.pos;
-
-            let found = if let Some(found) = self.source[self.pos..].find(|c| !is_number(c)) {
-                found
-            } else {
-                self.source.len() - start
-            };
-
-            self.pos += found;
-
-            Token::Literal(LiteralKind::Number(
-                self.source[start..self.pos].parse().unwrap(),
-            ))
+            self.number_literal_with_suffix()
         }
     }
 
-    fn number_literal_with_prefix(&mut self, prefix: char) -> (usize, usize, u32) {
-        let start = self.pos;
+    fn number_literal_with_prefix(&mut self) -> Token<'a> {
+        if let Some(second_char) = self.source[self.pos + 1..].chars().next() {
+            // If we have a prefix at this point, then we can handle it immediately.
+            match second_char {
+                c @ 'b' => return number_with_base!(self, c, is_binary_digit, 2),
+                c @ 'o' => return number_with_base!(self, c, is_octal_digit, 8),
+                c @ 'd' => return number_with_base!(self, c, is_decimal_digit, 10),
+                c @ 'x' => return number_with_base!(self, c, is_hexadecimal_digit, 16),
 
-        // Consume the "0" of the prefix.
-        self.pos += 1;
-
-        let radix = match prefix {
-            'x' => 16,
-            'b' => 2,
-            _ => 10,
-        };
-
-        // Search for anything that is not a number after the prefix.
-        if let Some(found) = self.source[self.pos + 1..].find(|c| !is_hexadecimal_digit(c)) {
-            if found > 0 {
-                self.pos += found + 1;
-                (start + 2, self.pos, radix)
-            } else {
-                (start, start, radix)
+                // [second_char] is not a valid prefix, so fall through to handle other formats.
+                _ => self.number_literal_with_suffix(),
             }
         } else {
-            // If no more digits were found, then we return an empty range.
-            (start, start, radix)
+            // We reached the end of the source and we only have the '0' character.
+            return Token::Literal(LiteralKind::Number(0));
         }
     }
 
-    fn number_literal_with_suffix(&mut self) -> (usize, usize, u32) {
-        debug_assert!(is_hexadecimal_digit(
+    fn number_literal_with_suffix(&mut self) -> Token<'a> {
+        debug_assert!(is_decimal_digit(
             self.source[self.pos..].chars().next().unwrap()
         ));
 
         let start = self.pos;
 
-        // The first character is a 0 and the next is also a number, so we parse
-        // anything that is a hexadecimal digit and then look for a suffix.
-        if let Some(found) = self.source[self.pos + 1..].find(|c| !is_hexadecimal_digit(c)) {
-            self.pos += found + 1;
-        } else {
-            // We didn't find any other digits, so it is just the 0.
-            // return Token::Literal(LiteralKind::Number(0));
-            todo!()
+        // Consume as many of the highest base (hexadecimal) characters as we can.
+        match self.source[self.pos..].find(|c| !is_hexadecimal_digit(c)) {
+            Some(found) => self.pos += found,
+            None => self.pos = self.source.len(),
         };
 
-        // Check for a suffix.
-        if let Some(suffix) = self.source[self.pos..].chars().next() {
-            match suffix {
-                'H' => {
-                    self.pos += 1;
-                    (start, self.pos - 1, 16)
-                }
-                // 'B' => {
-                //     self.pos += 1;
-                //     (start, self.pos - 1, 2)
-                // }
-                _ => (start, self.pos, 10),
+        let mut s = &self.source[start..self.pos];
+
+        // We can unwrap here, because we are guaranteed to have at least a single numeric
+        // character.
+        let suffix = s.chars().last().unwrap();
+
+        let base = match Base::try_from_char(suffix) {
+            Ok(base) => {
+                // If we found a suffix included in the string already, we have to cut it off.
+                s = &s[..s.len() - 1];
+
+                base
             }
-        } else {
-            todo!()
+            Err(_) => {
+                // Consume another character to see if there is a suffix that is not a valid
+                // hexadecimal character as well.
+                match self.source[self.pos..].chars().next() {
+                    Some(c) => match Base::try_from_char(c) {
+                        Ok(base) => {
+                            // Consume the suffix.
+                            self.pos += 1;
+
+                            base
+                        }
+                        Err(_) => Base::Decimal,
+                    },
+                    None => Base::Decimal,
+                }
+            }
+        };
+
+        let highest_base = Base::detect_highest_for(s);
+
+        if highest_base > base {
+            todo!("The requested base in lower than the detected base")
         }
+
+        // We can unwrap here, because we already checked that all the characters are valid for the
+        // base.
+        let value = i32::from_str_radix(s, base as u32).unwrap();
+
+        Token::Literal(LiteralKind::Number(value))
     }
 
     fn string_literal(&mut self) -> Result<Token<'a>, LexerError> {
@@ -368,12 +386,7 @@ fn is_identifier_first(c: char) -> bool {
 
 #[inline(always)]
 fn is_identifier(c: char) -> bool {
-    is_identifier_first(c) || is_number(c)
-}
-
-#[inline(always)]
-fn is_number(c: char) -> bool {
-    ('0'..='9').contains(&c)
+    is_identifier_first(c) || is_decimal_digit(c)
 }
 
 #[inline(always)]
@@ -382,8 +395,23 @@ fn is_whitespace(c: char) -> bool {
 }
 
 #[inline(always)]
+fn is_binary_digit(c: char) -> bool {
+    c == '0' || c == '1'
+}
+
+#[inline(always)]
+fn is_octal_digit(c: char) -> bool {
+    ('0'..='7').contains(&c)
+}
+
+#[inline(always)]
+fn is_decimal_digit(c: char) -> bool {
+    ('0'..='9').contains(&c)
+}
+
+#[inline(always)]
 fn is_hexadecimal_digit(c: char) -> bool {
-    is_number(c) || ('a'..='f').contains(&c) || ('A'..='F').contains(&c)
+    is_decimal_digit(c) || ('a'..='f').contains(&c) || ('A'..='F').contains(&c)
 }
 
 #[cfg(test)]
@@ -485,29 +513,33 @@ mod tests {
 
     #[test]
     fn number_literals() {
+        // binary
+        assert_parse!("11001000b", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0b11001000", Token::Literal(LiteralKind::Number(200)));
+
+        // octal
+        assert_parse!("310o", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0o310", Token::Literal(LiteralKind::Number(200)));
+
         // decimal
         assert_parse!("200", Token::Literal(LiteralKind::Number(200)));
         assert_parse!("0200", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("200d", Token::Literal(LiteralKind::Number(200)));
         assert_parse!("0200d", Token::Literal(LiteralKind::Number(200)));
         assert_parse!("0d200", Token::Literal(LiteralKind::Number(200)));
 
         // hex
         assert_parse!("0c8h", Token::Literal(LiteralKind::Number(200)));
         assert_parse!("0xc8", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("0hc8", Token::Literal(LiteralKind::Number(200)));
 
-        // octal
-        assert_parse!("310q", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("310o", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("0o310", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("0q310", Token::Literal(LiteralKind::Number(200)));
-
-        // binary
-        assert_parse!("11001000b", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("1100_1000b", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("1100_1000y", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("0b1100_1000", Token::Literal(LiteralKind::Number(200)));
-        assert_parse!("0y1100_1000", Token::Literal(LiteralKind::Number(200)));
+        // ensure we process the suffixes
+        let mut lexer = Lexer::new("10d\n10h\n10b\n");
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(10)));
+        assert_next_token!(lexer, Token::NewLine);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(16)));
+        assert_next_token!(lexer, Token::NewLine);
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(2)));
+        assert_next_token!(lexer, Token::NewLine);
 
         let mut lexer = Lexer::new(" 10 ");
         assert_next_token!(lexer, Token::Whitespace);
