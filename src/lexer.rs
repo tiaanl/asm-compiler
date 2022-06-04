@@ -54,6 +54,7 @@ pub enum PunctuationKind {
     Plus,
     Minus,
     Multiply,
+    Divide,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -104,11 +105,11 @@ pub struct Lexer<'a> {
 
 macro_rules! number_with_base {
     ($self:expr, $prefix:expr, $is_digit:ident, $base:expr) => {{
-        debug_assert!($self.source[$self.pos..].starts_with('0'));
-        debug_assert!($self.source[$self.pos + 1..].starts_with($prefix));
+        debug_assert!($self.first().unwrap() == '0');
+        debug_assert!($self.second().unwrap() == $prefix);
 
         // Only consume the '0'.
-        $self.pos += 1;
+        $self.advance(1);
         let start = $self.pos;
 
         let found = first_not_of!($self, $is_digit, 1);
@@ -121,7 +122,7 @@ macro_rules! number_with_base {
 
         // We have additional characters, so we can consume the prefix character and the found
         // digits.
-        $self.pos += found + 1;
+        $self.advance(found + 1);
 
         // We can unwrap here, because we already made sure we only have valid characters.
         #[allow(clippy::from_str_radix_10)]
@@ -154,7 +155,7 @@ impl<'a> Lexer<'a> {
     }
 
     pub fn next_token(&mut self) -> Result<Token<'a>, LexerError> {
-        let first = match self.source[self.pos..].chars().next() {
+        let first = match self.first() {
             Some(c) => c,
             None => return Ok(Token::EndOfFile),
         };
@@ -164,19 +165,19 @@ impl<'a> Lexer<'a> {
                 let start = self.pos;
                 match self.source[start..].find(|c| c == '\n') {
                     Some(found) => {
-                        self.pos += found;
+                        self.advance(found);
                         Ok(Token::Comment(&self.source[start..self.pos]))
                     }
                     None => {
                         // If a new line was not found, we have to take the rest of the source.
-                        self.pos += self.source[start..].len();
+                        self.advance(self.source.len() - start);
                         Ok(Token::Comment(&self.source[start..]))
                     }
                 }
             }
 
             c if is_whitespace(c) => {
-                self.pos += first_not_of!(self, is_whitespace);
+                self.advance(first_not_of!(self, is_whitespace));
 
                 Ok(Token::Whitespace)
             }
@@ -188,7 +189,7 @@ impl<'a> Lexer<'a> {
 
                 // If we can't find another character that is not an identifier, it means the
                 // identifier fills the rest of the source up to the end of the file.
-                self.pos += first_not_of!(self, is_identifier);
+                self.advance(first_not_of!(self, is_identifier));
 
                 Ok(Token::Identifier(&self.source[start..self.pos]))
             }
@@ -207,14 +208,37 @@ impl<'a> Lexer<'a> {
             '+' => Ok(self.punctuation(PunctuationKind::Plus)),
             '-' => Ok(self.punctuation(PunctuationKind::Minus)),
             '*' => Ok(self.punctuation(PunctuationKind::Multiply)),
+            '/' => Ok(self.punctuation(PunctuationKind::Divide)),
 
             c => Err(LexerError::new(self.pos, LexerErrorKind::InvalidToken(c))),
         }
     }
 
     #[inline(always)]
+    fn advance(&mut self, offset: usize) {
+        self.pos += offset;
+    }
+
+    #[inline(always)]
+    fn first(&self) -> Option<char> {
+        self.source[self.pos..].chars().next()
+    }
+
+    #[inline(always)]
+    fn second(&self) -> Option<char> {
+        let mut chars = self.source[self.pos..].chars();
+
+        if let Some(_) = chars.next() {
+            chars.next()
+        } else {
+            None
+        }
+    }
+
+    #[inline(always)]
     fn single_char_token(&mut self, token: Token<'a>) -> Token<'a> {
-        self.pos += 1;
+        self.advance(1);
+
         token
     }
 
@@ -234,7 +258,7 @@ impl<'a> Lexer<'a> {
     }
 
     fn number_literal_with_prefix(&mut self) -> Token<'a> {
-        if let Some(second_char) = self.source[self.pos + 1..].chars().next() {
+        if let Some(second_char) = self.second() {
             // If we have a prefix at this point, then we can handle it immediately.
             match second_char {
                 c @ 'b' => return number_with_base!(self, c, is_binary_digit, 2),
@@ -252,14 +276,12 @@ impl<'a> Lexer<'a> {
     }
 
     fn number_literal_with_suffix(&mut self) -> Token<'a> {
-        debug_assert!(is_decimal_digit(
-            self.source[self.pos..].chars().next().unwrap()
-        ));
+        debug_assert!(is_decimal_digit(self.first().unwrap()));
 
         let start = self.pos;
 
         // Consume as many of the highest base (hexadecimal) characters as we can.
-        self.pos += first_not_of!(self, is_hexadecimal_digit);
+        self.advance(first_not_of!(self, is_hexadecimal_digit));
 
         let mut s = &self.source[start..self.pos];
 
@@ -277,11 +299,11 @@ impl<'a> Lexer<'a> {
             Err(_) => {
                 // Consume another character to see if there is a suffix that is not a valid
                 // hexadecimal character as well.
-                match self.source[self.pos..].chars().next() {
+                match self.first() {
                     Some(c) => match Base::try_from_char(c) {
                         Ok(base) => {
                             // Consume the suffix.
-                            self.pos += 1;
+                            self.advance(1);
 
                             base
                         }
@@ -308,8 +330,8 @@ impl<'a> Lexer<'a> {
     fn string_literal(&mut self) -> Result<Token<'a>, LexerError> {
         let start = self.pos;
 
-        let first_terminator = self.source[(start + 1)..].find('\'');
-        let first_new_line = self.source[(start + 1)..].find('\n');
+        let first_terminator = self.source[self.pos + 1..].find('\'');
+        let first_new_line = self.source[self.pos + 1..].find('\n');
 
         match (first_terminator, first_new_line) {
             (None, None) | (None, Some(_)) => Err(LexerError::new(
@@ -318,7 +340,7 @@ impl<'a> Lexer<'a> {
             )),
 
             (Some(terminator), None) => {
-                self.pos += terminator + 2;
+                self.advance(terminator + 2);
                 Ok(Token::Literal(LiteralKind::String(
                     &self.source[(start + 1)..(self.pos - 1)],
                 )))
@@ -331,7 +353,7 @@ impl<'a> Lexer<'a> {
                         LexerErrorKind::UnterminatedStringLiteral,
                     ))
                 } else {
-                    self.pos += terminator + 2;
+                    self.advance(terminator + 2);
                     Ok(Token::Literal(LiteralKind::String(
                         &self.source[(start + 1)..(self.pos - 1)],
                     )))
@@ -435,6 +457,30 @@ mod tests {
             let mut lexer = Lexer::new($source);
             assert_next_token!(lexer, $token);
         };
+    }
+
+    #[test]
+    fn snake() {
+        let source = include_str!("../samples/snake.asm");
+        let mut lexer = Lexer::new(source);
+
+        loop {
+            match lexer.next_token() {
+                Ok(token) => {
+                    match token {
+                        Token::EndOfFile => break,
+                        _ => println!("{:?}", token),
+                    };
+                }
+                Err(err) => {
+                    eprintln!(
+                        "{}",
+                        lexer.source_line_at_pos(err.pos, Some("../samples/snake.asm"))
+                    );
+                    break;
+                }
+            };
+        }
     }
 
     #[test]
