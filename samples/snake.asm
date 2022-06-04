@@ -33,11 +33,11 @@ KEY_A equ            30
 KEY_P equ            25
 
 
-        CPU 186
-        BITS 16
+        ; CPU 186
+        ; BITS 16
 
 
-        ORG 100H
+        ; ORG 100H
         JMP main
 
 

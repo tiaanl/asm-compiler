@@ -318,6 +318,7 @@ pub enum Data {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Line<'a> {
+    Label(&'a str),
     Instruction(Instruction<'a>),
     Data(Data),
     Constant(i32),
@@ -326,6 +327,7 @@ pub enum Line<'a> {
 impl<'a> std::fmt::Display for Line<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Line::Label(name) => write!(f, "{}:", name),
             Line::Instruction(instruction) => write!(f, "  {}", instruction),
             Line::Data(data) => write!(f, "{:?}", data),
             Line::Constant(value) => write!(f, "equ {}", value),

@@ -79,7 +79,7 @@ fn main() {
 
     let mut parser = Parser::new(source);
     match parser.parse() {
-        Ok(_) => println!("{:?}", parser.into_block()),
+        Ok(lines) => println!("{:?}", lines),
         Err(err) => match err {
             parser::ParserError::Expected(pos, err) => {
                 eprintln!("Error: {}", err);
