@@ -39,7 +39,7 @@ impl Base {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum LiteralKind<'a> {
     Number(i32),
-    String(&'a str),
+    String(&'a str, bool),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -66,35 +66,7 @@ pub enum Token<'a> {
     Comment(&'a str),
     NewLine,
     EndOfFile,
-}
-
-#[derive(Debug)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
-pub enum LexerErrorKind {
-    InvalidToken(char),
-    UnterminatedStringLiteral,
-}
-
-impl std::fmt::Display for LexerErrorKind {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            LexerErrorKind::InvalidToken(c) => write!(f, "Invalid token found: \"{}\"", c),
-            LexerErrorKind::UnterminatedStringLiteral => write!(f, "Unterminated string literal"),
-        }
-    }
-}
-
-#[derive(Debug)]
-#[cfg_attr(test, derive(Eq, PartialEq))]
-pub struct LexerError {
-    pub pos: usize,
-    pub kind: LexerErrorKind,
-}
-
-impl LexerError {
-    pub fn new(pos: usize, kind: LexerErrorKind) -> Self {
-        Self { pos, kind }
-    }
+    Invalid(char),
 }
 
 #[derive(Clone, Copy)]
@@ -154,10 +126,10 @@ impl<'a> Lexer<'a> {
         self.pos
     }
 
-    pub fn next_token(&mut self) -> Result<Token<'a>, LexerError> {
+    pub fn next_token(&mut self) -> Token<'a> {
         let first = match self.first() {
             Some(c) => c,
-            None => return Ok(Token::EndOfFile),
+            None => return Token::EndOfFile,
         };
 
         match first {
@@ -166,12 +138,12 @@ impl<'a> Lexer<'a> {
                 match self.source[start..].find(|c| c == '\n') {
                     Some(found) => {
                         self.advance(found);
-                        Ok(Token::Comment(&self.source[start..self.pos]))
+                        Token::Comment(&self.source[start..self.pos])
                     }
                     None => {
                         // If a new line was not found, we have to take the rest of the source.
                         self.advance(self.source.len() - start);
-                        Ok(Token::Comment(&self.source[start..]))
+                        Token::Comment(&self.source[start..])
                     }
                 }
             }
@@ -179,10 +151,10 @@ impl<'a> Lexer<'a> {
             c if is_whitespace(c) => {
                 self.advance(first_not_of!(self, is_whitespace));
 
-                Ok(Token::Whitespace)
+                Token::Whitespace
             }
 
-            c if is_decimal_digit(c) => Ok(self.number(c)),
+            c if is_decimal_digit(c) => self.number(c),
 
             c if is_identifier_first(c) => {
                 let start = self.pos;
@@ -191,26 +163,26 @@ impl<'a> Lexer<'a> {
                 // identifier fills the rest of the source up to the end of the file.
                 self.advance(first_not_of!(self, is_identifier));
 
-                Ok(Token::Identifier(&self.source[start..self.pos]))
+                Token::Identifier(&self.source[start..self.pos])
             }
 
             '\'' => self.string_literal(),
 
-            '\n' => Ok(self.single_char_token(Token::NewLine)),
+            '\n' => self.single_char_token(Token::NewLine),
 
-            ':' => Ok(self.punctuation(PunctuationKind::Colon)),
-            ',' => Ok(self.punctuation(PunctuationKind::Comma)),
-            '.' => Ok(self.punctuation(PunctuationKind::Dot)),
-            '[' => Ok(self.punctuation(PunctuationKind::OpenBracket)),
-            ']' => Ok(self.punctuation(PunctuationKind::CloseBracket)),
-            '(' => Ok(self.punctuation(PunctuationKind::OpenParenthesis)),
-            ')' => Ok(self.punctuation(PunctuationKind::CloseParenthesis)),
-            '+' => Ok(self.punctuation(PunctuationKind::Plus)),
-            '-' => Ok(self.punctuation(PunctuationKind::Minus)),
-            '*' => Ok(self.punctuation(PunctuationKind::Multiply)),
-            '/' => Ok(self.punctuation(PunctuationKind::Divide)),
+            ':' => self.punctuation(PunctuationKind::Colon),
+            ',' => self.punctuation(PunctuationKind::Comma),
+            '.' => self.punctuation(PunctuationKind::Dot),
+            '[' => self.punctuation(PunctuationKind::OpenBracket),
+            ']' => self.punctuation(PunctuationKind::CloseBracket),
+            '(' => self.punctuation(PunctuationKind::OpenParenthesis),
+            ')' => self.punctuation(PunctuationKind::CloseParenthesis),
+            '+' => self.punctuation(PunctuationKind::Plus),
+            '-' => self.punctuation(PunctuationKind::Minus),
+            '*' => self.punctuation(PunctuationKind::Multiply),
+            '/' => self.punctuation(PunctuationKind::Divide),
 
-            c => Err(LexerError::new(self.pos, LexerErrorKind::InvalidToken(c))),
+            c => Token::Invalid(c),
         }
     }
 
@@ -327,36 +299,46 @@ impl<'a> Lexer<'a> {
         Token::Literal(LiteralKind::Number(value))
     }
 
-    fn string_literal(&mut self) -> Result<Token<'a>, LexerError> {
+    fn string_literal(&mut self) -> Token<'a> {
+        // Consume the opening character.
+        self.advance(1);
+
+        // The start is the first character after the opening character.
         let start = self.pos;
 
-        let first_terminator = self.source[self.pos + 1..].find('\'');
-        let first_new_line = self.source[self.pos + 1..].find('\n');
+        let first_terminator = self.source[self.pos..].find('\'');
+        let first_new_line = self.source[self.pos..].find('\n');
 
         match (first_terminator, first_new_line) {
-            (None, None) | (None, Some(_)) => Err(LexerError::new(
-                self.pos,
-                LexerErrorKind::UnterminatedStringLiteral,
+            (None, None) => Token::Literal(LiteralKind::String(
+                &self.source[self.pos..self.source.len()],
+                false,
             )),
 
+            (None, Some(new_line)) => {
+                // Consume until the '\n' character.
+                self.advance(new_line);
+                Token::Literal(LiteralKind::String(
+                    &self.source[start..self.pos + new_line],
+                    false,
+                ))
+            }
+
             (Some(terminator), None) => {
-                self.advance(terminator + 2);
-                Ok(Token::Literal(LiteralKind::String(
-                    &self.source[(start + 1)..(self.pos - 1)],
-                )))
+                // Consume the text and the terminator.
+                self.advance(terminator + 1);
+                Token::Literal(LiteralKind::String(&self.source[start..self.pos - 1], true))
             }
 
             (Some(terminator), Some(new_line)) => {
                 if new_line < terminator {
-                    Err(LexerError::new(
-                        self.pos,
-                        LexerErrorKind::UnterminatedStringLiteral,
-                    ))
+                    self.advance(new_line);
+
+                    Token::Literal(LiteralKind::String(&self.source[start..self.pos], false))
                 } else {
-                    self.advance(terminator + 2);
-                    Ok(Token::Literal(LiteralKind::String(
-                        &self.source[(start + 1)..(self.pos - 1)],
-                    )))
+                    self.advance(terminator + 1);
+
+                    Token::Literal(LiteralKind::String(&self.source[start..self.pos - 1], true))
                 }
             }
         }
@@ -442,13 +424,7 @@ mod tests {
 
     macro_rules! assert_next_token {
         ($lexer:expr, $token:expr) => {
-            assert_eq!($lexer.next_token().unwrap(), $token);
-        };
-    }
-
-    macro_rules! assert_next_token_err {
-        ($lexer:expr, $err:expr) => {
-            assert_eq!($lexer.next_token().err().unwrap(), $err);
+            assert_eq!($lexer.next_token(), $token);
         };
     }
 
@@ -466,19 +442,8 @@ mod tests {
 
         loop {
             match lexer.next_token() {
-                Ok(token) => {
-                    match token {
-                        Token::EndOfFile => break,
-                        _ => println!("{:?}", token),
-                    };
-                }
-                Err(err) => {
-                    eprintln!(
-                        "{}",
-                        lexer.source_line_at_pos(err.pos, Some("../samples/snake.asm"))
-                    );
-                    break;
-                }
+                Token::EndOfFile => break,
+                token => println!("{:?}", token),
             };
         }
     }
@@ -529,31 +494,25 @@ mod tests {
 
     #[test]
     fn string_literals() {
-        let mut lexer = Lexer::new("  'a string literal ;; 123'");
+        let mut lexer = Lexer::new("  'a string literal ;; 123'\ntest");
         assert_next_token!(lexer, Token::Whitespace);
         assert_next_token!(
             lexer,
-            Token::Literal(LiteralKind::String("a string literal ;; 123"))
+            Token::Literal(LiteralKind::String("a string literal ;; 123", true))
         );
 
         let mut lexer = Lexer::new("  'a string literal  ");
         assert_next_token!(lexer, Token::Whitespace);
-        assert_next_token_err!(
+        assert_next_token!(
             lexer,
-            LexerError {
-                pos: 2,
-                kind: LexerErrorKind::UnterminatedStringLiteral
-            }
+            Token::Literal(LiteralKind::String("a string literal  ", false))
         );
 
         let mut lexer = Lexer::new("  'a string literal\n'  ");
         assert_next_token!(lexer, Token::Whitespace);
-        assert_next_token_err!(
+        assert_next_token!(
             lexer,
-            LexerError {
-                pos: 2,
-                kind: LexerErrorKind::UnterminatedStringLiteral
-            }
+            Token::Literal(LiteralKind::String("a string literal", false))
         );
     }
 

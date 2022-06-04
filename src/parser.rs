@@ -1,19 +1,12 @@
 use crate::{
     ast,
-    lexer::{Lexer, LexerError, LiteralKind, PunctuationKind, Token},
+    lexer::{Lexer, LiteralKind, PunctuationKind, Token},
 };
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum ParserError {
-    LexerError(LexerError),
     Expected(usize, String),
-}
-
-impl From<LexerError> for ParserError {
-    fn from(err: LexerError) -> Self {
-        ParserError::LexerError(err)
-    }
 }
 
 pub struct Parser<'a> {
@@ -39,13 +32,17 @@ impl<'a> Parser<'a> {
         }
     }
 
+    pub fn into_block(self) -> ast::Block<'a> {
+        self.block
+    }
+
     pub fn parse(&mut self) -> Result<(), ParserError> {
-        self.next_token()?;
+        self.next_token();
 
         loop {
             // Skip blank lines.
             while let Token::NewLine = self.token {
-                self.next_token()?;
+                self.next_token();
             }
 
             if !self.parse_line()? {
@@ -56,11 +53,11 @@ impl<'a> Parser<'a> {
         Ok(())
     }
 
-    fn next_token(&mut self) -> Result<(), LexerError> {
+    fn next_token(&mut self) {
         self.last_lexer_pos = self.lexer.pos();
 
         loop {
-            match self.lexer.next_token()? {
+            match self.lexer.next_token() {
                 Token::Comment(_) | Token::Whitespace => {
                     self.last_lexer_pos = self.lexer.pos();
                     continue;
@@ -71,20 +68,13 @@ impl<'a> Parser<'a> {
                 }
             }
         }
-
-        // match &self.token {
-        //     Token::NewLine => {}
-        //     _ => println!("next token: {:?}", self.token),
-        // }
-
-        Ok(())
     }
 
     /// The current token is required to be a new line.  If it is, then consume it, otherwise we
     /// report an error.
     fn require_new_line(&mut self) -> Result<(), ParserError> {
         if let Token::NewLine = self.token {
-            self.next_token()?;
+            self.next_token();
             Ok(())
         } else if let Token::EndOfFile = self.token {
             Ok(())
@@ -94,43 +84,43 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_line(&mut self) -> Result<bool, ParserError> {
-        println!(
-            "parse_line:\n{}",
-            self.lexer
-                .source_line_at_pos(self.last_lexer_pos, Some("mem"))
-        );
+        // println!(
+        //     "parse_line:\n{}",
+        //     self.lexer
+        //         .source_line_at_pos(self.last_lexer_pos, Some("mem"))
+        // );
 
         loop {
             match self.token {
                 Token::Identifier(identifier) => {
                     if let Some(operation) = ast::Operation::from_str(identifier) {
-                        self.next_token()?;
+                        self.next_token();
                         let instruction = self.parse_instruction(operation)?;
                         self.block.lines.push(ast::Line::Instruction(instruction));
                         return Ok(true);
                     } else {
                         match identifier.to_lowercase().as_str() {
                             "equ" => {
-                                self.next_token()?;
+                                self.next_token();
                                 self.parse_equ()?;
                             }
 
                             "db" => {
-                                self.next_token()?;
+                                self.next_token();
                                 let line = self.parse_data::<u8>()?;
                                 self.block.lines.push(line);
                                 return Ok(true);
                             }
 
                             "dw" => {
-                                self.next_token()?;
+                                self.next_token();
                                 let line = self.parse_data::<u16>()?;
                                 self.block.lines.push(line);
                                 return Ok(true);
                             }
 
                             "dd" => {
-                                self.next_token()?;
+                                self.next_token();
                                 let line = self.parse_data::<u32>()?;
                                 self.block.lines.push(line);
                                 return Ok(true);
@@ -138,7 +128,7 @@ impl<'a> Parser<'a> {
 
                             _ => {
                                 // Consume the token that holds the label.
-                                self.next_token()?;
+                                self.next_token();
 
                                 let label = self.parse_label(identifier)?;
                                 self.block.labels.insert(label, self.block.lines.len());
@@ -153,9 +143,8 @@ impl<'a> Parser<'a> {
 
                 _ => {
                     return Err(self.expected(format!(
-                        "Identifier expected at the start of a new line. Found {:?}\n{}",
+                        "Identifier expected at the start of a new line. Found {:?}",
                         self.token,
-                        self.lexer.source_line_current(Some("mem"))
                     )))
                 }
             }
@@ -165,11 +154,11 @@ impl<'a> Parser<'a> {
     fn parse_label(&mut self, name: &'a str) -> Result<&'a str, ParserError> {
         // Skip the optional colon after a label.
         if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
-            self.next_token()?;
+            self.next_token();
 
             // If the token after the ":" is a new_line, then we should consume it as well.
             if matches!(self.token, Token::NewLine) {
-                self.next_token()?;
+                self.next_token();
             }
         }
 
@@ -192,7 +181,7 @@ impl<'a> Parser<'a> {
 
     fn parse_operands(&mut self) -> Result<ast::Operands<'a>, ParserError> {
         if matches!(self.token, Token::Comment(_)) {
-            self.next_token()?;
+            self.next_token();
         }
 
         if matches!(self.token, Token::NewLine | Token::EndOfFile) {
@@ -203,7 +192,7 @@ impl<'a> Parser<'a> {
             match self.token {
                 Token::NewLine | Token::EndOfFile => Ok(ast::Operands::Destination(destination)),
                 Token::Punctuation(PunctuationKind::Comma) => {
-                    self.next_token()?;
+                    self.next_token();
                     let source = self.parse_operand()?;
 
                     Ok(ast::Operands::DestinationAndSource(destination, source))
@@ -221,17 +210,17 @@ impl<'a> Parser<'a> {
     fn parse_operand(&mut self) -> Result<ast::Operand<'a>, ParserError> {
         match self.token {
             Token::Literal(LiteralKind::Number(number)) => {
-                self.next_token()?;
+                self.next_token();
                 Ok(ast::Operand::Immediate(number))
             }
 
             Token::Identifier(identifier) => {
                 if let Some(data_size) = ast::DataSize::from_str(identifier) {
                     // Consume the data size token.
-                    self.next_token()?;
+                    self.next_token();
                     self.parse_memory_operand(Some(data_size))
                 } else {
-                    self.next_token()?;
+                    self.next_token();
                     Ok(ast::Operand::Register(identifier))
                 }
             }
@@ -250,7 +239,7 @@ impl<'a> Parser<'a> {
             return Err(self.expected("opening bracket for direct memory address".to_owned()));
         }
 
-        self.next_token()?;
+        self.next_token();
 
         let mut segment_override = None;
 
@@ -259,16 +248,16 @@ impl<'a> Parser<'a> {
                 // If the first identifier is a segment, then we have an override.
                 if let Some(segment) = ast::Segment::from_str(identifier) {
                     segment_override = Some(segment);
-                    self.next_token()?;
+                    self.next_token();
 
                     if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
-                        self.next_token()?;
+                        self.next_token();
                     } else {
                         return Err(self.expected("colon after segment override".to_owned()));
                     }
                 }
 
-                self.next_token()?;
+                self.next_token();
                 ast::AddressOrLabel::Label(identifier)
             }
             _ => todo!(),
@@ -280,8 +269,8 @@ impl<'a> Parser<'a> {
 
                 Token::Punctuation(PunctuationKind::Plus)
                 | Token::Punctuation(PunctuationKind::Minus) => {
-                    self.next_token()?;
-                    self.next_token()?;
+                    self.next_token();
+                    self.next_token();
                 }
 
                 _ => {
@@ -290,7 +279,7 @@ impl<'a> Parser<'a> {
             }
         }
 
-        self.next_token()?;
+        self.next_token();
 
         Ok(ast::Operand::DirectAddress(
             data_size,
@@ -303,7 +292,7 @@ impl<'a> Parser<'a> {
     fn parse_equ(&mut self) -> Result<(), ParserError> {
         let value = match self.token {
             Token::Literal(LiteralKind::Number(number)) => {
-                self.next_token()?;
+                self.next_token();
                 number
             }
 
@@ -323,19 +312,19 @@ impl<'a> Parser<'a> {
         loop {
             match self.token {
                 Token::Punctuation(PunctuationKind::Comma) => {
-                    self.next_token()?;
+                    self.next_token();
                     continue;
                 }
 
-                Token::Literal(LiteralKind::String(s)) => {
-                    self.next_token()?;
+                Token::Literal(LiteralKind::String(s, _)) => {
+                    self.next_token();
                     for b in s.as_bytes() {
                         data.push(*b);
                     }
                 }
 
                 Token::Literal(LiteralKind::Number(number)) => {
-                    self.next_token()?;
+                    self.next_token();
                     for b in number.to_le_bytes() {
                         data.push(b);
                     }
