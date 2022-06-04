@@ -111,10 +111,7 @@ macro_rules! number_with_base {
         $self.pos += 1;
         let start = $self.pos;
 
-        let found = match $self.source[$self.pos + 1..].find(|c| !$is_digit(c)) {
-            Some(found) => found,
-            None => $self.source.len() - $self.pos - 1,
-        };
+        let found = first_not_of!($self, $is_digit, 1);
 
         // If no additional characters were found, then we return the '0' character as the literal
         // only.
@@ -130,6 +127,19 @@ macro_rules! number_with_base {
         #[allow(clippy::from_str_radix_10)]
         let value = i32::from_str_radix(&$self.source[start + 1..$self.pos], $base).unwrap();
         Token::Literal(LiteralKind::Number(value))
+    }};
+}
+
+macro_rules! first_not_of {
+    ($self:expr, $predicate:ident) => {{
+        first_not_of!($self, $predicate, 0)
+    }};
+
+    ($self:expr, $predicate:ident, $offset:expr) => {{
+        match $self.source[$self.pos + $offset..].find(|c| !$predicate(c)) {
+            Some(found) => found,
+            None => $self.source.len() - $self.pos - $offset,
+        }
     }};
 }
 
@@ -166,10 +176,7 @@ impl<'a> Lexer<'a> {
             }
 
             c if is_whitespace(c) => {
-                self.pos += match self.source[self.pos..].find(|c| !is_whitespace(c)) {
-                    Some(distance) => distance,
-                    None => self.source[self.pos..].len(),
-                };
+                self.pos += first_not_of!(self, is_whitespace);
 
                 Ok(Token::Whitespace)
             }
@@ -179,13 +186,9 @@ impl<'a> Lexer<'a> {
             c if is_identifier_first(c) => {
                 let start = self.pos;
 
-                // If we can't find another character that is not an
-                // identifier, it means the identifier fills the rest of the
-                // source up to the end of the file.
-                self.pos += match self.source[self.pos..].find(|c| !is_identifier(c)) {
-                    Some(distance) => distance,
-                    None => self.source[self.pos..].len(),
-                };
+                // If we can't find another character that is not an identifier, it means the
+                // identifier fills the rest of the source up to the end of the file.
+                self.pos += first_not_of!(self, is_identifier);
 
                 Ok(Token::Identifier(&self.source[start..self.pos]))
             }
@@ -256,10 +259,7 @@ impl<'a> Lexer<'a> {
         let start = self.pos;
 
         // Consume as many of the highest base (hexadecimal) characters as we can.
-        match self.source[self.pos..].find(|c| !is_hexadecimal_digit(c)) {
-            Some(found) => self.pos += found,
-            None => self.pos = self.source.len(),
-        };
+        self.pos += first_not_of!(self, is_hexadecimal_digit);
 
         let mut s = &self.source[start..self.pos];
 

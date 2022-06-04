@@ -362,15 +362,15 @@ impl<'a> Parser<'a> {
     }
 }
 
-pub fn parse(input: &str) -> Result<ast::Block, ParserError> {
-    let mut parser = Parser::new(input);
-    parser.parse()?;
-    Ok(parser.block)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    pub fn parse(input: &str) -> Result<ast::Block, ParserError> {
+        let mut parser = Parser::new(input);
+        parser.parse()?;
+        Ok(parser.block)
+    }
 
     #[test]
     fn blank_lines() {
