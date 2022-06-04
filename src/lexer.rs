@@ -253,7 +253,9 @@ impl<'a> Lexer<'a> {
     }
 
     fn number_literal_with_suffix(&mut self) -> (usize, usize, u32) {
-        debug_assert!(self.source[self.pos..].starts_with('0'));
+        debug_assert!(is_hexadecimal_digit(
+            self.source[self.pos..].chars().next().unwrap()
+        ));
 
         let start = self.pos;
 
@@ -394,6 +396,19 @@ mod tests {
         };
     }
 
+    macro_rules! assert_next_token_err {
+        ($lexer:expr, $err:expr) => {
+            assert_eq!($lexer.next_token().err().unwrap(), $err);
+        };
+    }
+
+    macro_rules! assert_parse {
+        ($source:literal, $token:expr) => {
+            let mut lexer = Lexer::new($source);
+            assert_next_token!(lexer, $token);
+        };
+    }
+
     #[test]
     fn end_of_file() {
         let mut lexer = Lexer::new("");
@@ -411,6 +426,8 @@ mod tests {
 
     #[test]
     fn skips_whitespace() {
+        assert_parse!("", Token::EndOfFile);
+
         let mut lexer = Lexer::new(" \t test \rtest2");
         assert_next_token!(lexer, Token::Whitespace);
         assert_next_token!(lexer, Token::Identifier("test"));
@@ -447,7 +464,7 @@ mod tests {
 
         let mut lexer = Lexer::new("  'a string literal  ");
         assert_next_token!(lexer, Token::Whitespace);
-        assert_next_token!(
+        assert_next_token_err!(
             lexer,
             LexerError {
                 pos: 2,
@@ -457,7 +474,7 @@ mod tests {
 
         let mut lexer = Lexer::new("  'a string literal\n'  ");
         assert_next_token!(lexer, Token::Whitespace);
-        assert_next_token!(
+        assert_next_token_err!(
             lexer,
             LexerError {
                 pos: 2,
@@ -468,6 +485,30 @@ mod tests {
 
     #[test]
     fn number_literals() {
+        // decimal
+        assert_parse!("200", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0200", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0200d", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0d200", Token::Literal(LiteralKind::Number(200)));
+
+        // hex
+        assert_parse!("0c8h", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0xc8", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0hc8", Token::Literal(LiteralKind::Number(200)));
+
+        // octal
+        assert_parse!("310q", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("310o", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0o310", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0q310", Token::Literal(LiteralKind::Number(200)));
+
+        // binary
+        assert_parse!("11001000b", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("1100_1000b", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("1100_1000y", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0b1100_1000", Token::Literal(LiteralKind::Number(200)));
+        assert_parse!("0y1100_1000", Token::Literal(LiteralKind::Number(200)));
+
         let mut lexer = Lexer::new(" 10 ");
         assert_next_token!(lexer, Token::Whitespace);
         assert_next_token!(lexer, Token::Literal(LiteralKind::Number(10)));
@@ -480,7 +521,7 @@ mod tests {
         assert_next_token!(lexer, Token::Whitespace);
         assert_next_token!(lexer, Token::Literal(LiteralKind::Number(16)));
         assert_next_token!(lexer, Token::Whitespace);
-        assert_next_token!(lexer,Token::Literal(LiteralKind::Number(10)));
+        assert_next_token!(lexer, Token::Literal(LiteralKind::Number(10)));
         assert_next_token!(lexer, Token::Whitespace);
         assert_next_token!(lexer, Token::Literal(LiteralKind::Number(0)));
         assert_next_token!(lexer, Token::Identifier("X10"));
