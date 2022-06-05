@@ -1,7 +1,5 @@
-use crate::{
-    ast,
-    lexer::{Lexer, LiteralKind, PunctuationKind, Token},
-};
+use crate::ast;
+use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
 
 #[derive(Debug)]
 pub enum ParserError {
