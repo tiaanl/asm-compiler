@@ -200,6 +200,18 @@ impl<'a> Parser<'a> {
                 Ok(ast::Operand::Immediate(number))
             }
 
+            Token::Literal(LiteralKind::String(s, terminated)) => {
+                if !terminated {
+                    Err(self.expected("Unterminated string literal".to_owned()))
+                } else if s.len() != 1 {
+                    Err(self.expected("Only character literals allowed as operands".to_owned()))
+                } else {
+                    // Consume the literal.
+                    self.next_token();
+                    Ok(ast::Operand::Immediate(s.chars().next().unwrap() as i32))
+                }
+            }
+
             Token::Identifier(identifier) => {
                 if let Some(data_size) = ast::DataSize::from_str(identifier) {
                     // Consume the data size token.
