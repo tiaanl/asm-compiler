@@ -52,7 +52,7 @@ fn main() {
             match err {
                 parser::ParserError::Expected(pos, err) => {
                     eprintln!("Error: {}", err);
-                    print_source_pos(source, pos, Some("samples/snake.asm"));
+                    print_source_pos(source, pos, Some(args.source.as_str()));
                 }
             }
 

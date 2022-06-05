@@ -3,6 +3,83 @@ use std::fmt::Formatter;
 
 #[allow(clippy::upper_case_acronyms)]
 #[derive(Debug, PartialEq, Eq)]
+pub enum ByteRegister {
+    AL,
+    AH,
+    CL,
+    CH,
+    DL,
+    DH,
+    BL,
+    BH,
+}
+
+impl ByteRegister {
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s.to_lowercase().as_str() {
+            "al" => Self::AL,
+            "ah" => Self::AH,
+            "cl" => Self::CL,
+            "ch" => Self::CH,
+            "dl" => Self::DL,
+            "dh" => Self::DH,
+            "bl" => Self::BL,
+            "bh" => Self::BH,
+
+            _ => return None,
+        })
+    }
+}
+
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, PartialEq, Eq)]
+pub enum WordRegister {
+    AX,
+    CX,
+    DX,
+    BX,
+    SP,
+    BP,
+    SI,
+    DI,
+}
+
+impl WordRegister {
+    pub fn from_str(s: &str) -> Option<Self> {
+        Some(match s.to_lowercase().as_str() {
+            "ax" => Self::AX,
+            "cx" => Self::CX,
+            "dx" => Self::DX,
+            "bx" => Self::BX,
+            "sp" => Self::SP,
+            "bp" => Self::BP,
+            "si" => Self::SI,
+            "di" => Self::DI,
+
+            _ => return None,
+        })
+    }
+}
+
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, PartialEq, Eq)]
+pub enum Register {
+    Byte(ByteRegister),
+    Word(WordRegister),
+}
+
+impl Register {
+    pub fn from_str(s: &str) -> Option<Self> {
+        if let Some(byte_register) = ByteRegister::from_str(s) {
+            Some(Register::Byte(byte_register))
+        } else {
+            WordRegister::from_str(s).map(Register::Word)
+        }
+    }
+}
+
+#[allow(clippy::upper_case_acronyms)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum Operation {
     // Data transfer
     MOV,   // Move
@@ -275,17 +352,43 @@ impl DataSize {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum AddressOrLabel<'a> {
-    // Address(u32),
+pub enum ValueOrLabel<'a> {
+    Value(i32),
     Label(&'a str),
 }
 
 #[derive(Debug, PartialEq, Eq)]
+pub enum Expression<'a> {
+    Add(Box<Expression<'a>>, Box<Expression<'a>>),
+    Subtract(Box<Expression<'a>>, Box<Expression<'a>>),
+    Multiply(Box<Expression<'a>>, Box<Expression<'a>>),
+    Divide(Box<Expression<'a>>, Box<Expression<'a>>),
+    Value(ValueOrLabel<'a>),
+}
+
+impl<'a> std::fmt::Display for Expression<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        use Expression::*;
+
+        match self {
+            Add(left, right) => write!(f, "{} + {}", left, right),
+            Subtract(left, right) => write!(f, "{} - {}", left, right),
+            Multiply(left, right) => write!(f, "{} * {}", left, right),
+            Divide(left, right) => write!(f, "{} / {}", left, right),
+            Value(value_or_label) => match value_or_label {
+                ValueOrLabel::Value(value) => write!(f, "{}", *value),
+                ValueOrLabel::Label(label) => write!(f, "{}", *label),
+            },
+        }
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
 pub enum Operand<'a> {
-    Immediate(i32),
-    DirectAddress(Option<DataSize>, AddressOrLabel<'a>, Option<Segment>, i32),
+    Immediate(Box<Expression<'a>>),
+    DirectAddress(Option<DataSize>, Box<Expression<'a>>, Option<Segment>),
     // IndirectAddress,
-    Register(&'a str),
+    Register(Register),
     // Displacement,
     // FarAddress,
 }
@@ -321,16 +424,18 @@ pub enum Line<'a> {
     Label(&'a str),
     Instruction(Instruction<'a>),
     Data(Data),
-    Constant(i32),
+    Constant(Box<Expression<'a>>),
+    Times(Box<Expression<'a>>),
 }
 
 impl<'a> std::fmt::Display for Line<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Line::Label(name) => write!(f, "{}:", name),
-            Line::Instruction(instruction) => write!(f, "  {}", instruction),
-            Line::Data(data) => write!(f, "{:?}", data),
-            Line::Constant(value) => write!(f, "equ {}", value),
+            Line::Instruction(instruction) => write!(f, "    {}", instruction),
+            Line::Data(data) => write!(f, "    {:?}", data),
+            Line::Constant(value) => write!(f, "    equ {}", value),
+            Line::Times(expression) => write!(f, "    times {}", expression),
         }
     }
 }

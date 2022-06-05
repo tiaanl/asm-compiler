@@ -2,7 +2,7 @@ use crate::ast;
 
 #[derive(Debug)]
 pub enum CompilerError {
-    Unknown,
+    // Unknown,
 }
 
 pub struct Compiler<'a> {
@@ -15,6 +15,10 @@ impl<'a> Compiler<'a> {
     }
 
     pub fn compile(&mut self) -> Result<(), CompilerError> {
-        todo!()
+        for line in &self.lines {
+            println!("{}", line);
+        }
+
+        Ok(())
     }
 }

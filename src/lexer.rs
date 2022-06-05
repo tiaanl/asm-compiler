@@ -53,8 +53,8 @@ pub enum PunctuationKind {
     CloseParenthesis,
     Plus,
     Minus,
-    Multiply,
-    Divide,
+    Star,
+    ForwardSlash,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -179,8 +179,8 @@ impl<'a> Lexer<'a> {
             ')' => self.punctuation(PunctuationKind::CloseParenthesis),
             '+' => self.punctuation(PunctuationKind::Plus),
             '-' => self.punctuation(PunctuationKind::Minus),
-            '*' => self.punctuation(PunctuationKind::Multiply),
-            '/' => self.punctuation(PunctuationKind::Divide),
+            '*' => self.punctuation(PunctuationKind::Star),
+            '/' => self.punctuation(PunctuationKind::ForwardSlash),
 
             c => Token::Invalid(c),
         }
@@ -344,11 +344,11 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    pub fn source_line_current(&self, path: Option<&str>) -> String {
-        self.source_line_at_pos(self.pos, path)
+    pub fn _source_line_current(&self, path: Option<&str>) -> String {
+        self._source_line_at_pos(self.pos, path)
     }
 
-    pub fn source_line_at_pos(&self, pos: usize, path: Option<&str>) -> String {
+    pub fn _source_line_at_pos(&self, pos: usize, path: Option<&str>) -> String {
         let prev_new_line = if let Some(found) = self.source[..pos].rfind('\n') {
             found + 1
         } else {

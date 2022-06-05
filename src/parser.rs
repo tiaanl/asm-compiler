@@ -75,6 +75,12 @@ impl<'a> Parser<'a> {
                                 continue;
                             }
 
+                            "times" => {
+                                let line = self.parse_times()?;
+                                self.lines.push(line);
+                                continue;
+                            }
+
                             _ => {
                                 // If no known keyword is found, we assume the identifier is a
                                 // label.
@@ -173,31 +179,130 @@ impl<'a> Parser<'a> {
         if matches!(self.token, Token::NewLine | Token::EndOfFile) {
             Ok(ast::Operands::None)
         } else {
-            let destination = self.parse_operand()?;
+            let destination = self.parse_operand(None)?;
 
             match self.token {
                 Token::NewLine | Token::EndOfFile => Ok(ast::Operands::Destination(destination)),
                 Token::Punctuation(PunctuationKind::Comma) => {
                     self.next_token();
-                    let source = self.parse_operand()?;
+                    let source = self.parse_operand(None)?;
 
                     Ok(ast::Operands::DestinationAndSource(destination, source))
                 }
 
-                _ => {
-                    let source = self.lexer.source_line_current(Some("mem"));
-                    println!("{}", source);
-                    Err(self.expected(format!("An unexpected token was encountered: {:?}", source)))
+                _ => Err(self.expected("An unexpected token was encountered.".to_owned())),
+            }
+        }
+    }
+
+    fn parse_operand(
+        &mut self,
+        data_size: Option<ast::DataSize>,
+    ) -> Result<ast::Operand<'a>, ParserError> {
+        match self.token {
+            Token::Punctuation(PunctuationKind::OpenBracket) => {
+                self.next_token();
+                self.parse_memory_operand(data_size)
+            }
+
+            Token::Identifier(identifier) => {
+                if let Some(register) = ast::Register::from_str(identifier) {
+                    self.next_token();
+                    Ok(ast::Operand::Register(register))
+                } else if let Some(data_size) = ast::DataSize::from_str(identifier) {
+                    self.next_token();
+                    self.parse_operand(Some(data_size))
+                } else {
+                    let expression = self.parse_expression(None)?;
+                    Ok(ast::Operand::Immediate(expression))
+                }
+            }
+
+            _ => {
+                let expression = self.parse_expression(None)?;
+                Ok(ast::Operand::Immediate(expression))
+            }
+        }
+    }
+
+    fn parse_expression(
+        &mut self,
+        left: Option<Box<ast::Expression<'a>>>,
+    ) -> Result<Box<ast::Expression<'a>>, ParserError> {
+        match self.token {
+            Token::Literal(_) | Token::Identifier(_) => {
+                let value_or_label = self.parse_value_or_label()?;
+                return self
+                    .parse_expression(Some(Box::new(ast::Expression::Value(value_or_label))));
+            }
+
+            Token::Punctuation(PunctuationKind::Plus) if left.is_some() => {
+                self.next_token();
+
+                let right = self.parse_value_or_label()?;
+
+                let left = Box::new(ast::Expression::Add(
+                    left.unwrap(),
+                    Box::new(ast::Expression::Value(right)),
+                ));
+
+                self.parse_expression(Some(left))
+            }
+
+            Token::Punctuation(PunctuationKind::Minus) if left.is_some() => {
+                self.next_token();
+
+                let right = self.parse_value_or_label()?;
+
+                let left = Box::new(ast::Expression::Subtract(
+                    left.unwrap(),
+                    Box::new(ast::Expression::Value(right)),
+                ));
+
+                self.parse_expression(Some(left))
+            }
+
+            Token::Punctuation(PunctuationKind::Star) if left.is_some() => {
+                self.next_token();
+
+                let right = self.parse_value_or_label()?;
+
+                let left = Box::new(ast::Expression::Multiply(
+                    left.unwrap(),
+                    Box::new(ast::Expression::Value(right)),
+                ));
+
+                self.parse_expression(Some(left))
+            }
+
+            Token::Punctuation(PunctuationKind::ForwardSlash) if left.is_some() => {
+                self.next_token();
+
+                let right = self.parse_value_or_label()?;
+
+                let left = Box::new(ast::Expression::Divide(
+                    left.unwrap(),
+                    Box::new(ast::Expression::Value(right)),
+                ));
+
+                self.parse_expression(Some(left))
+            }
+
+            _ => {
+                if let Some(expression) = left {
+                    return Ok(expression);
+                } else {
+                    todo!()
                 }
             }
         }
     }
 
-    fn parse_operand(&mut self) -> Result<ast::Operand<'a>, ParserError> {
+    fn parse_value_or_label(&mut self) -> Result<ast::ValueOrLabel<'a>, ParserError> {
         match self.token {
-            Token::Literal(LiteralKind::Number(number)) => {
+            Token::Literal(LiteralKind::Number(value)) => {
                 self.next_token();
-                Ok(ast::Operand::Immediate(number))
+                Ok(ast::ValueOrLabel::Value(value))
             }
 
             Token::Literal(LiteralKind::String(s, terminated)) => {
@@ -208,24 +313,19 @@ impl<'a> Parser<'a> {
                 } else {
                     // Consume the literal.
                     self.next_token();
-                    Ok(ast::Operand::Immediate(s.chars().next().unwrap() as i32))
+
+                    let value = s.chars().next().unwrap() as i32;
+
+                    Ok(ast::ValueOrLabel::Value(value))
                 }
             }
 
             Token::Identifier(identifier) => {
-                if let Some(data_size) = ast::DataSize::from_str(identifier) {
-                    // Consume the data size token.
-                    self.next_token();
-                    self.parse_memory_operand(Some(data_size))
-                } else {
-                    self.next_token();
-                    Ok(ast::Operand::Register(identifier))
-                }
+                self.next_token();
+                Ok(ast::ValueOrLabel::Label(identifier))
             }
 
-            Token::Punctuation(PunctuationKind::OpenBracket) => self.parse_memory_operand(None),
-
-            _ => Err(self.expected("operand expected".to_owned())),
+            _ => Err(self.expected("Value or label expected.".to_owned())),
         }
     }
 
@@ -233,15 +333,9 @@ impl<'a> Parser<'a> {
         &mut self,
         data_size: Option<ast::DataSize>,
     ) -> Result<ast::Operand<'a>, ParserError> {
-        if !matches!(self.token, Token::Punctuation(PunctuationKind::OpenBracket)) {
-            return Err(self.expected("opening bracket for direct memory address".to_owned()));
-        }
-
-        self.next_token();
-
         let mut segment_override = None;
 
-        let address_or_label = match self.token {
+        let expression = match self.token {
             Token::Identifier(identifier) => {
                 // If the first identifier is a segment, then we have an override.
                 if let Some(segment) = ast::Segment::from_str(identifier) {
@@ -251,39 +345,30 @@ impl<'a> Parser<'a> {
                     if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
                         self.next_token();
                     } else {
-                        return Err(self.expected("colon after segment override".to_owned()));
+                        return Err(
+                            self.expected("Colon (:) required after segment override.".to_owned())
+                        );
                     }
                 }
 
-                self.next_token();
-                ast::AddressOrLabel::Label(identifier)
+                self.parse_expression(None)?
             }
             _ => todo!(),
         };
 
-        loop {
-            match self.token {
-                Token::Punctuation(PunctuationKind::CloseBracket) => break,
-
-                Token::Punctuation(PunctuationKind::Plus)
-                | Token::Punctuation(PunctuationKind::Minus) => {
-                    self.next_token();
-                    self.next_token();
-                }
-
-                _ => {
-                    return Err(self.expected("closing bracket for memory address".to_owned()));
-                }
-            }
+        if matches!(
+            self.token,
+            Token::Punctuation(PunctuationKind::CloseBracket)
+        ) {
+            self.next_token();
+        } else {
+            return Err(self.expected("closing bracket for memory address".to_owned()));
         }
-
-        self.next_token();
 
         Ok(ast::Operand::DirectAddress(
             data_size,
-            address_or_label,
+            expression,
             segment_override,
-            0,
         ))
     }
 
@@ -293,18 +378,11 @@ impl<'a> Parser<'a> {
         // Consume the "equ" keyword.
         self.next_token();
 
-        let value = match self.token {
-            Token::Literal(LiteralKind::Number(number)) => {
-                self.next_token();
-                number
-            }
-
-            _ => return Err(self.expected("Constant value expected.".to_owned())),
-        };
+        let expression = self.parse_expression(None)?;
 
         self.require_new_line()?;
 
-        Ok(ast::Line::Constant(value))
+        Ok(ast::Line::Constant(expression))
     }
 
     fn parse_data<T>(&mut self) -> Result<ast::Line<'a>, ParserError> {
@@ -348,6 +426,14 @@ impl<'a> Parser<'a> {
             4 => Ok(ast::Line::Data(ast::Data::DoubleWord(data as Vec<u8>))),
             _ => unreachable!("Invalid data size"),
         }
+    }
+
+    fn parse_times(&mut self) -> Result<ast::Line<'a>, ParserError> {
+        self.next_token();
+
+        let expression = self.parse_expression(None)?;
+
+        Ok(ast::Line::Times(expression))
     }
 
     fn expected(&self, message: String) -> ParserError {
