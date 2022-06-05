@@ -326,9 +326,7 @@ impl<'a> Parser<'a> {
                     }
                 }
 
-                _ => {
-                    break;
-                }
+                _ => break,
             }
         }
 

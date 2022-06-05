@@ -200,7 +200,7 @@ impl<'a> Lexer<'a> {
     fn second(&self) -> Option<char> {
         let mut chars = self.source[self.pos..].chars();
 
-        if let Some(_) = chars.next() {
+        if chars.next().is_some() {
             chars.next()
         } else {
             None
