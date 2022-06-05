@@ -420,12 +420,7 @@ impl<'a> Parser<'a> {
 
         self.require_new_line()?;
 
-        match std::mem::size_of::<T>() {
-            1 => Ok(ast::Line::Data(ast::Data::Byte(data as Vec<u8>))),
-            2 => Ok(ast::Line::Data(ast::Data::Word(data as Vec<u8>))),
-            4 => Ok(ast::Line::Data(ast::Data::DoubleWord(data as Vec<u8>))),
-            _ => unreachable!("Invalid data size"),
-        }
+        Ok(ast::Line::Data(data))
     }
 
     fn parse_times(&mut self) -> Result<ast::Line<'a>, ParserError> {

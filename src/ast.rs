@@ -413,17 +413,10 @@ impl<'a> std::fmt::Display for Instruction<'a> {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum Data {
-    Byte(Vec<u8>),
-    Word(Vec<u8>),
-    DoubleWord(Vec<u8>),
-}
-
-#[derive(Debug, PartialEq, Eq)]
 pub enum Line<'a> {
     Label(&'a str),
     Instruction(Instruction<'a>),
-    Data(Data),
+    Data(Vec<u8>),
     Constant(Box<Expression<'a>>),
     Times(Box<Expression<'a>>),
 }
