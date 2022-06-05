@@ -3,7 +3,6 @@ mod lexer;
 mod parser;
 
 use clap::Parser as ClapParser;
-use parser::Parser;
 
 fn print_source_pos(source: &str, pos: usize, path: Option<&str>) {
     let prev_new_line = if let Some(found) = source[..pos].rfind('\n') {
@@ -77,28 +76,12 @@ fn main() {
     let source = std::fs::read_to_string(&args.source).unwrap();
     let source = source.as_str();
 
-    let mut parser = Parser::new(source);
-    match parser.parse() {
-        Ok(lines) => println!("{:?}", lines),
-        Err(err) => match err {
+    if let Err(err) = parser::parse(source) {
+        match err {
             parser::ParserError::Expected(pos, err) => {
                 eprintln!("Error: {}", err);
                 print_source_pos(source, pos, Some("samples/snake.asm"));
             }
-        },
-    };
-
-    // match Parser::new(source).parse() {
-    //     Ok(_) => {
-    //         // dbg!(compile(lines.as_slice()));
-    //         // lines.iter().for_each(|line| println!("{}", line));
-    //         dbg!(lines);
-    //     }
-    //     Err(err) => match err {
-    //         parser::ParserError::Expected(pos, err) => {
-    //             eprintln!("Error: {}", err);
-    //             print_source_pos(source, pos, None);
-    //         }
-    //     },
-    // }
+        }
+    }
 }

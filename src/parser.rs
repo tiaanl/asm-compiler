@@ -8,7 +8,13 @@ pub enum ParserError {
     Expected(usize, String),
 }
 
-pub struct Parser<'a> {
+pub fn parse(source: &str) -> Result<Vec<ast::Line>, ParserError> {
+    let mut parser = Parser::new(source);
+    let _ = parser.parse()?;
+    Ok(parser.lines)
+}
+
+struct Parser<'a> {
     lexer: Lexer<'a>,
     token_pos: usize,
 
@@ -19,7 +25,7 @@ pub struct Parser<'a> {
 }
 
 impl<'a> Parser<'a> {
-    pub fn new(source: &'a str) -> Self {
+    fn new(source: &'a str) -> Self {
         Self {
             lexer: Lexer::new(source),
             token_pos: 0,
@@ -28,26 +34,72 @@ impl<'a> Parser<'a> {
         }
     }
 
-    pub fn parse(&mut self) -> Result<Vec<ast::Line<'a>>, ParserError> {
-        self.lines.clear();
-
+    fn parse(&mut self) -> Result<(), ParserError> {
+        // Pull in the first token from the lexer.
         self.next_token();
 
         loop {
-            // Skip blank lines.
-            while let Token::NewLine = self.token {
-                self.next_token();
-            }
+            match self.token {
+                Token::NewLine => {
+                    // If the line starts with a new line, we just skip it.
+                    self.next_token();
+                }
 
-            if !self.parse_line()? {
-                break;
+                Token::Identifier(identifier) => {
+                    if let Some(operation) = ast::Operation::from_str(identifier) {
+                        self.next_token();
+                        let instruction = self.parse_instruction(operation)?;
+                        self.lines.push(ast::Line::Instruction(instruction));
+                        continue;
+                    } else {
+                        match identifier.to_lowercase().as_str() {
+                            "equ" => {
+                                let line = self.parse_equ()?;
+                                self.lines.push(line);
+                                continue;
+                            }
+
+                            "db" => {
+                                let line = self.parse_data::<u8>()?;
+                                self.lines.push(line);
+                                continue;
+                            }
+
+                            "dw" => {
+                                let line = self.parse_data::<u16>()?;
+                                self.lines.push(line);
+                                continue;
+                            }
+
+                            "dd" => {
+                                let line = self.parse_data::<u32>()?;
+                                self.lines.push(line);
+                                continue;
+                            }
+
+                            _ => {
+                                // If no known keyword is found, we assume the identifier is a
+                                // label.
+                                let line = self.parse_label(identifier)?;
+                                self.lines.push(line);
+                                continue;
+                            }
+                        }
+                    }
+                }
+
+                Token::EndOfFile => break,
+
+                _ => {
+                    return Err(self.expected(format!(
+                        "Identifier expected at the start of a new line. Found {:?}",
+                        self.token,
+                    )))
+                }
             }
         }
 
-        let mut lines: Vec<ast::Line<'a>> = Vec::new();
-        std::mem::swap(&mut self.lines, &mut lines);
-
-        Ok(lines)
+        Ok(())
     }
 
     fn next_token(&mut self) {
@@ -81,74 +133,10 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_line(&mut self) -> Result<bool, ParserError> {
-        // println!(
-        //     "parse_line:\n{}",
-        //     self.lexer
-        //         .source_line_at_pos(self.last_lexer_pos, Some("mem"))
-        // );
+    fn parse_label(&mut self, name: &'a str) -> Result<ast::Line<'a>, ParserError> {
+        // Consume the token that holds the label.
+        self.next_token();
 
-        match self.token {
-            Token::Identifier(identifier) => {
-                if let Some(operation) = ast::Operation::from_str(identifier) {
-                    self.next_token();
-                    let instruction = self.parse_instruction(operation)?;
-                    self.lines.push(ast::Line::Instruction(instruction));
-                    Ok(true)
-                } else {
-                    match identifier.to_lowercase().as_str() {
-                        "equ" => {
-                            self.next_token();
-                            self.parse_equ()?;
-                            Ok(true)
-                        }
-
-                        "db" => {
-                            self.next_token();
-                            let line = self.parse_data::<u8>()?;
-                            self.lines.push(line);
-                            Ok(true)
-                        }
-
-                        "dw" => {
-                            self.next_token();
-                            let line = self.parse_data::<u16>()?;
-                            self.lines.push(line);
-                            Ok(true)
-                        }
-
-                        "dd" => {
-                            self.next_token();
-                            let line = self.parse_data::<u32>()?;
-                            self.lines.push(line);
-                            Ok(true)
-                        }
-
-                        _ => {
-                            // Consume the token that holds the label.
-                            self.next_token();
-
-                            let label = self.parse_label(identifier)?;
-                            self.lines.push(ast::Line::Label(label));
-
-                            Ok(true)
-                        }
-                    }
-                }
-            }
-
-            Token::EndOfFile => Ok(false),
-
-            _ => {
-                return Err(self.expected(format!(
-                    "Identifier expected at the start of a new line. Found {:?}",
-                    self.token,
-                )))
-            }
-        }
-    }
-
-    fn parse_label(&mut self, name: &'a str) -> Result<&'a str, ParserError> {
         // Skip the optional colon after a label.
         if matches!(self.token, Token::Punctuation(PunctuationKind::Colon)) {
             self.next_token();
@@ -157,9 +145,12 @@ impl<'a> Parser<'a> {
             if matches!(self.token, Token::NewLine) {
                 self.next_token();
             }
+        } else if matches!(self.token, Token::NewLine) {
+            // A new line after the label should also be consumed.
+            self.next_token();
         }
 
-        Ok(name)
+        Ok(ast::Line::Label(name))
     }
 
     fn parse_instruction(
@@ -286,7 +277,12 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_equ(&mut self) -> Result<(), ParserError> {
+    fn parse_equ(&mut self) -> Result<ast::Line<'a>, ParserError> {
+        debug_assert!(matches!(self.token, Token::Identifier(_)));
+
+        // Consume the "equ" keyword.
+        self.next_token();
+
         let value = match self.token {
             Token::Literal(LiteralKind::Number(number)) => {
                 self.next_token();
@@ -298,12 +294,15 @@ impl<'a> Parser<'a> {
 
         self.require_new_line()?;
 
-        self.lines.push(ast::Line::Constant(value));
-
-        Ok(())
+        Ok(ast::Line::Constant(value))
     }
 
     fn parse_data<T>(&mut self) -> Result<ast::Line<'a>, ParserError> {
+        debug_assert!(matches!(self.token, Token::Identifier(_)));
+
+        // Consume the "Dx" keyword.
+        self.next_token();
+
         let mut data = Vec::<u8>::new();
 
         loop {
@@ -354,16 +353,16 @@ mod tests {
 
     #[test]
     fn blank_lines() {
-        let lines = Parser::new("").parse().unwrap();
+        let lines = parse("").unwrap();
         assert_eq!(lines, vec![]);
 
-        let lines = Parser::new("\n\n").parse().unwrap();
+        let lines = parse("\n\n").unwrap();
         assert_eq!(lines, vec![]);
     }
 
     #[test]
     fn label_and_instruction() {
-        let lines = Parser::new("start hlt").parse().unwrap();
+        let lines = parse("start hlt").unwrap();
         assert_eq!(
             lines,
             vec![
@@ -378,7 +377,7 @@ mod tests {
 
     #[test]
     fn multiple_labels() {
-        let lines = Parser::new("start begin: begin2:hlt").parse().unwrap();
+        let lines = parse("start begin: begin2:hlt").unwrap();
         assert_eq!(
             lines,
             vec![
@@ -395,15 +394,14 @@ mod tests {
 
     #[test]
     fn constants() {
-        let lines = Parser::new("label equ 42").parse().unwrap();
+        let lines = parse("label equ 42").unwrap();
         assert_eq!(
             lines,
             vec![ast::Line::Label("label"), ast::Line::Constant(42)]
         );
 
-        let lines = Parser::new("first equ 10 ; first value\n\nsecond equ 20 ; second value\n\n")
-            .parse()
-            .unwrap();
+        let lines =
+            parse("first equ 10 ; first value\n\nsecond equ 20 ; second value\n\n").unwrap();
         assert_eq!(
             lines,
             vec![
