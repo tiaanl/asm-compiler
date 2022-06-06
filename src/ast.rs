@@ -411,9 +411,20 @@ impl DataSize {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-pub enum ValueOrLabel<'a> {
-    Value(i32),
+pub enum Value<'a> {
+    Constant(i32),
     Label(&'a str),
+    Register(Register),
+}
+
+impl<'a> std::fmt::Display for Value<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Value::Constant(value) => write!(f, "const({})", *value),
+            Value::Label(label) => write!(f, "label({})", *label),
+            Value::Register(register) => write!(f, "reg({})", *register),
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -422,22 +433,17 @@ pub enum Expression<'a> {
     Subtract(Box<Expression<'a>>, Box<Expression<'a>>),
     Multiply(Box<Expression<'a>>, Box<Expression<'a>>),
     Divide(Box<Expression<'a>>, Box<Expression<'a>>),
-    Value(ValueOrLabel<'a>),
+    Value(Value<'a>),
 }
 
 impl<'a> std::fmt::Display for Expression<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        use Expression::*;
-
         match self {
-            Add(left, right) => write!(f, "{} + {}", left, right),
-            Subtract(left, right) => write!(f, "{} - {}", left, right),
-            Multiply(left, right) => write!(f, "{} * {}", left, right),
-            Divide(left, right) => write!(f, "{} / {}", left, right),
-            Value(value_or_label) => match value_or_label {
-                ValueOrLabel::Value(value) => write!(f, "{}", *value),
-                ValueOrLabel::Label(label) => write!(f, "{}", *label),
-            },
+            Expression::Add(left, right) => write!(f, "{} + {}", left, right),
+            Expression::Subtract(left, right) => write!(f, "{} - {}", left, right),
+            Expression::Multiply(left, right) => write!(f, "{} * {}", left, right),
+            Expression::Divide(left, right) => write!(f, "{} / {}", left, right),
+            Expression::Value(value) => write!(f, "{}", value),
         }
     }
 }
@@ -445,18 +451,16 @@ impl<'a> std::fmt::Display for Expression<'a> {
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operand<'a> {
     Immediate(Box<Expression<'a>>),
-    DirectAddress(Option<DataSize>, Box<Expression<'a>>, Option<Segment>),
-    // IndirectAddress,
+    Address(Option<DataSize>, Box<Expression<'a>>, Option<Segment>),
     Register(Register),
-    // Displacement,
-    // FarAddress,
 }
 
 impl<'a> std::fmt::Display for Operand<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Operand::Immediate(expr) => write!(f, "{}", expr),
-            Operand::DirectAddress(data_size, expr, segment) => {
+
+            Operand::Address(data_size, expr, segment) => {
                 if let Some(data_size) = data_size {
                     write!(f, "{} ", data_size)?;
                 }
@@ -470,6 +474,7 @@ impl<'a> std::fmt::Display for Operand<'a> {
 
                 write!(f, "]")
             }
+
             Operand::Register(register) => write!(f, "{}", register),
         }
     }

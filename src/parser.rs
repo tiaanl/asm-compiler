@@ -233,7 +233,7 @@ impl<'a> Parser<'a> {
             ($op:ident) => {{
                 self.next_token();
 
-                let right = self.parse_value_or_label()?;
+                let right = self.parse_value()?;
 
                 let left = Box::new(ast::Expression::$op(
                     left.unwrap(),
@@ -246,7 +246,7 @@ impl<'a> Parser<'a> {
 
         match self.token {
             Token::Literal(_) | Token::Identifier(_) => {
-                let value_or_label = self.parse_value_or_label()?;
+                let value_or_label = self.parse_value()?;
                 let expression = Box::new(ast::Expression::Value(value_or_label));
                 self.parse_expression(Some(expression))
             }
@@ -277,11 +277,11 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_value_or_label(&mut self) -> Result<ast::ValueOrLabel<'a>, ParserError> {
+    fn parse_value(&mut self) -> Result<ast::Value<'a>, ParserError> {
         match self.token {
             Token::Literal(LiteralKind::Number(value)) => {
                 self.next_token();
-                Ok(ast::ValueOrLabel::Value(value))
+                Ok(ast::Value::Constant(value))
             }
 
             Token::Literal(LiteralKind::String(s, terminated)) => {
@@ -295,13 +295,18 @@ impl<'a> Parser<'a> {
 
                     let value = s.chars().next().unwrap() as i32;
 
-                    Ok(ast::ValueOrLabel::Value(value))
+                    Ok(ast::Value::Constant(value))
                 }
             }
 
             Token::Identifier(identifier) => {
                 self.next_token();
-                Ok(ast::ValueOrLabel::Label(identifier))
+
+                if let Some(register) = ast::Register::from_str(identifier) {
+                    Ok(ast::Value::Register(register))
+                } else {
+                    Ok(ast::Value::Label(identifier))
+                }
             }
 
             _ => Err(self.expected("Value or label expected.".to_owned())),
@@ -344,7 +349,7 @@ impl<'a> Parser<'a> {
             return Err(self.expected("closing bracket for memory address".to_owned()));
         }
 
-        Ok(ast::Operand::DirectAddress(
+        Ok(ast::Operand::Address(
             data_size,
             expression,
             segment_override,
