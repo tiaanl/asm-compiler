@@ -229,68 +229,47 @@ impl<'a> Parser<'a> {
         &mut self,
         left: Option<Box<ast::Expression<'a>>>,
     ) -> Result<Box<ast::Expression<'a>>, ParserError> {
+        macro_rules! arithmetic {
+            ($op:ident) => {{
+                self.next_token();
+
+                let right = self.parse_value_or_label()?;
+
+                let left = Box::new(ast::Expression::$op(
+                    left.unwrap(),
+                    Box::new(ast::Expression::Value(right)),
+                ));
+
+                self.parse_expression(Some(left))
+            }};
+        }
+
         match self.token {
             Token::Literal(_) | Token::Identifier(_) => {
                 let value_or_label = self.parse_value_or_label()?;
-                return self
-                    .parse_expression(Some(Box::new(ast::Expression::Value(value_or_label))));
+                let expression = Box::new(ast::Expression::Value(value_or_label));
+                self.parse_expression(Some(expression))
             }
 
             Token::Punctuation(PunctuationKind::Plus) if left.is_some() => {
-                self.next_token();
-
-                let right = self.parse_value_or_label()?;
-
-                let left = Box::new(ast::Expression::Add(
-                    left.unwrap(),
-                    Box::new(ast::Expression::Value(right)),
-                ));
-
-                self.parse_expression(Some(left))
+                arithmetic!(Add)
             }
 
             Token::Punctuation(PunctuationKind::Minus) if left.is_some() => {
-                self.next_token();
-
-                let right = self.parse_value_or_label()?;
-
-                let left = Box::new(ast::Expression::Subtract(
-                    left.unwrap(),
-                    Box::new(ast::Expression::Value(right)),
-                ));
-
-                self.parse_expression(Some(left))
+                arithmetic!(Subtract)
             }
 
             Token::Punctuation(PunctuationKind::Star) if left.is_some() => {
-                self.next_token();
-
-                let right = self.parse_value_or_label()?;
-
-                let left = Box::new(ast::Expression::Multiply(
-                    left.unwrap(),
-                    Box::new(ast::Expression::Value(right)),
-                ));
-
-                self.parse_expression(Some(left))
+                arithmetic!(Multiply)
             }
 
             Token::Punctuation(PunctuationKind::ForwardSlash) if left.is_some() => {
-                self.next_token();
-
-                let right = self.parse_value_or_label()?;
-
-                let left = Box::new(ast::Expression::Divide(
-                    left.unwrap(),
-                    Box::new(ast::Expression::Value(right)),
-                ));
-
-                self.parse_expression(Some(left))
+                arithmetic!(Divide)
             }
 
             _ => {
                 if let Some(expression) = left {
-                    return Ok(expression);
+                    Ok(expression)
                 } else {
                     todo!()
                 }

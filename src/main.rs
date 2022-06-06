@@ -35,9 +35,12 @@ fn print_source_pos(source: &str, pos: usize, path: Option<&str>) {
     println!("^");
 }
 
-#[derive(ClapParser)]
+#[derive(ClapParser, Debug)]
 struct Args {
     source: String,
+
+    #[clap(short, long)]
+    syntax_only: bool,
 }
 
 fn main() {
@@ -60,9 +63,15 @@ fn main() {
         }
     };
 
-    let mut compiler = Compiler::new(lines);
-    match compiler.compile() {
-        Ok(_) => println!("DONE"),
-        Err(err) => eprintln!("{:?}", err),
+    if args.syntax_only {
+        for line in &lines {
+            println!("{}", line);
+        }
+    } else {
+        let mut compiler = Compiler::new(lines);
+        match compiler.compile() {
+            Ok(_) => println!("DONE"),
+            Err(err) => eprintln!("{:?}", err),
+        }
     }
 }

@@ -14,6 +14,21 @@ pub enum ByteRegister {
     BH,
 }
 
+impl std::fmt::Display for ByteRegister {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            ByteRegister::AL => write!(f, "AL"),
+            ByteRegister::AH => write!(f, "AH"),
+            ByteRegister::CL => write!(f, "CL"),
+            ByteRegister::CH => write!(f, "CH"),
+            ByteRegister::DL => write!(f, "DL"),
+            ByteRegister::DH => write!(f, "DH"),
+            ByteRegister::BL => write!(f, "BL"),
+            ByteRegister::BH => write!(f, "BH"),
+        }
+    }
+}
+
 impl ByteRegister {
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s.to_lowercase().as_str() {
@@ -44,6 +59,21 @@ pub enum WordRegister {
     DI,
 }
 
+impl std::fmt::Display for WordRegister {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            WordRegister::AX => write!(f, "AX"),
+            WordRegister::CX => write!(f, "CX"),
+            WordRegister::DX => write!(f, "DX"),
+            WordRegister::BX => write!(f, "BX"),
+            WordRegister::SP => write!(f, "SP"),
+            WordRegister::BP => write!(f, "BP"),
+            WordRegister::SI => write!(f, "SI"),
+            WordRegister::DI => write!(f, "DI"),
+        }
+    }
+}
+
 impl WordRegister {
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s.to_lowercase().as_str() {
@@ -66,6 +96,15 @@ impl WordRegister {
 pub enum Register {
     Byte(ByteRegister),
     Word(WordRegister),
+}
+
+impl std::fmt::Display for Register {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Register::Byte(byte) => write!(f, "{}", byte),
+            Register::Word(word) => write!(f, "{}", word),
+        }
+    }
 }
 
 impl Register {
@@ -323,6 +362,17 @@ pub enum Segment {
     SS,
 }
 
+impl std::fmt::Display for Segment {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Segment::CS => write!(f, "CS"),
+            Segment::DS => write!(f, "DS"),
+            Segment::ES => write!(f, "ES"),
+            Segment::SS => write!(f, "SS"),
+        }
+    }
+}
+
 impl Segment {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
@@ -339,6 +389,15 @@ impl Segment {
 pub enum DataSize {
     Byte,
     Word,
+}
+
+impl std::fmt::Display for DataSize {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            DataSize::Byte => write!(f, "BYTE"),
+            DataSize::Word => write!(f, "WORD"),
+        }
+    }
 }
 
 impl DataSize {
@@ -393,11 +452,46 @@ pub enum Operand<'a> {
     // FarAddress,
 }
 
+impl<'a> std::fmt::Display for Operand<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operand::Immediate(expr) => write!(f, "{}", expr),
+            Operand::DirectAddress(data_size, expr, segment) => {
+                if let Some(data_size) = data_size {
+                    write!(f, "{} ", data_size)?;
+                }
+                write!(f, "[")?;
+
+                if let Some(segment) = segment {
+                    write!(f, "{}:", segment)?;
+                }
+
+                write!(f, "{}", expr)?;
+
+                write!(f, "]")
+            }
+            Operand::Register(register) => write!(f, "{}", register),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq)]
 pub enum Operands<'a> {
     None,
     Destination(Operand<'a>),
     DestinationAndSource(Operand<'a>, Operand<'a>),
+}
+
+impl<'a> std::fmt::Display for Operands<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operands::None => Ok(()),
+            Operands::Destination(destination) => write!(f, "{}", destination),
+            Operands::DestinationAndSource(destination, source) => {
+                write!(f, "{}, {}", destination, source)
+            }
+        }
+    }
 }
 
 #[derive(Debug, PartialEq, Eq)]
@@ -408,7 +502,11 @@ pub struct Instruction<'a> {
 
 impl<'a> std::fmt::Display for Instruction<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?} {:?}", self.operation, self.operands)
+        if let Operands::None = self.operands {
+            write!(f, "{:?}", self.operation)
+        } else {
+            write!(f, "{:?} {}", self.operation, self.operands)
+        }
     }
 }
 
