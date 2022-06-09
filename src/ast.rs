@@ -429,11 +429,13 @@ impl<'a> std::fmt::Display for Value<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Expression<'a> {
+    // Infix operators:
     Add(Box<Expression<'a>>, Box<Expression<'a>>),
     Subtract(Box<Expression<'a>>, Box<Expression<'a>>),
     Multiply(Box<Expression<'a>>, Box<Expression<'a>>),
     Divide(Box<Expression<'a>>, Box<Expression<'a>>),
-    Value(Value<'a>),
+
+    Term(Value<'a>),
 }
 
 impl<'a> std::fmt::Display for Expression<'a> {
@@ -443,7 +445,7 @@ impl<'a> std::fmt::Display for Expression<'a> {
             Expression::Subtract(left, right) => write!(f, "{} - {}", left, right),
             Expression::Multiply(left, right) => write!(f, "{} * {}", left, right),
             Expression::Divide(left, right) => write!(f, "{} / {}", left, right),
-            Expression::Value(value) => write!(f, "{}", value),
+            Expression::Term(value) => write!(f, "{}", value),
         }
     }
 }

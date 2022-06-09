@@ -24,18 +24,20 @@ struct Parser<'a> {
 
 impl<'a> Parser<'a> {
     fn new(source: &'a str) -> Self {
-        Self {
+        let mut parser = Self {
             lexer: Lexer::new(source),
             token_pos: 0,
             token: Token::EndOfFile,
             lines: vec![],
-        }
+        };
+
+        // Initialize the current token with the first token that we can fetch from the lexer.
+        parser.next_token();
+
+        parser
     }
 
     fn parse(&mut self) -> Result<(), ParserError> {
-        // Pull in the first token from the lexer.
-        self.next_token();
-
         loop {
             match self.token {
                 Token::NewLine => {
@@ -96,7 +98,7 @@ impl<'a> Parser<'a> {
 
                 _ => {
                     return Err(self.expected(format!(
-                        "Identifier expected at the start of a new line. Found {:?}",
+                        "Identifier or label expected, found {:?}",
                         self.token,
                     )))
                 }
@@ -213,66 +215,39 @@ impl<'a> Parser<'a> {
                     self.next_token();
                     self.parse_operand(Some(data_size))
                 } else {
-                    let expression = self.parse_expression(None)?;
+                    let expression = self.parse_expression()?;
                     Ok(ast::Operand::Immediate(expression))
                 }
             }
 
             _ => {
-                let expression = self.parse_expression(None)?;
+                let expression = self.parse_expression()?;
                 Ok(ast::Operand::Immediate(expression))
             }
         }
     }
 
-    fn parse_expression(
-        &mut self,
-        left: Option<Box<ast::Expression<'a>>>,
-    ) -> Result<Box<ast::Expression<'a>>, ParserError> {
-        macro_rules! arithmetic {
-            ($op:ident) => {{
+    fn parse_expression(&mut self) -> Result<Box<ast::Expression<'a>>, ParserError> {
+        let mut left = Box::new(ast::Expression::Term(self.parse_value()?));
+
+        macro_rules! op {
+            ($operator:ident) => {{
+                // Consume the operator.
                 self.next_token();
 
-                let right = self.parse_value()?;
-
-                let left = Box::new(ast::Expression::$op(
-                    left.unwrap(),
-                    Box::new(ast::Expression::Value(right)),
-                ));
-
-                self.parse_expression(Some(left))
+                let right = self.parse_expression()?;
+                left = Box::new(ast::Expression::$operator(left, right));
             }};
         }
 
-        match self.token {
-            Token::Literal(_) | Token::Identifier(_) => {
-                let value_or_label = self.parse_value()?;
-                let expression = Box::new(ast::Expression::Value(value_or_label));
-                self.parse_expression(Some(expression))
-            }
+        loop {
+            match self.token {
+                Token::Punctuation(PunctuationKind::Plus) => op!(Add),
+                Token::Punctuation(PunctuationKind::Minus) => op!(Subtract),
+                Token::Punctuation(PunctuationKind::Star) => op!(Multiply),
+                Token::Punctuation(PunctuationKind::ForwardSlash) => op!(Divide),
 
-            Token::Punctuation(PunctuationKind::Plus) if left.is_some() => {
-                arithmetic!(Add)
-            }
-
-            Token::Punctuation(PunctuationKind::Minus) if left.is_some() => {
-                arithmetic!(Subtract)
-            }
-
-            Token::Punctuation(PunctuationKind::Star) if left.is_some() => {
-                arithmetic!(Multiply)
-            }
-
-            Token::Punctuation(PunctuationKind::ForwardSlash) if left.is_some() => {
-                arithmetic!(Divide)
-            }
-
-            _ => {
-                if let Some(expression) = left {
-                    Ok(expression)
-                } else {
-                    todo!()
-                }
+                _ => return Ok(left),
             }
         }
     }
@@ -288,7 +263,7 @@ impl<'a> Parser<'a> {
                 if !terminated {
                     Err(self.expected("Unterminated string literal".to_owned()))
                 } else if s.len() != 1 {
-                    Err(self.expected("Only character literals allowed as operands".to_owned()))
+                    Err(self.expected("Only character literals allowed.".to_owned()))
                 } else {
                     // Consume the literal.
                     self.next_token();
@@ -309,7 +284,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            _ => Err(self.expected("Value or label expected.".to_owned())),
+            _ => Err(self.expected("Constant, label or register expected.".to_owned())),
         }
     }
 
@@ -335,7 +310,7 @@ impl<'a> Parser<'a> {
                     }
                 }
 
-                self.parse_expression(None)?
+                self.parse_expression()?
             }
             _ => todo!(),
         };
@@ -362,7 +337,7 @@ impl<'a> Parser<'a> {
         // Consume the "equ" keyword.
         self.next_token();
 
-        let expression = self.parse_expression(None)?;
+        let expression = self.parse_expression()?;
 
         self.require_new_line()?;
 
@@ -410,7 +385,7 @@ impl<'a> Parser<'a> {
     fn parse_times(&mut self) -> Result<ast::Line<'a>, ParserError> {
         self.next_token();
 
-        let expression = self.parse_expression(None)?;
+        let expression = self.parse_expression()?;
 
         Ok(ast::Line::Times(expression))
     }
@@ -470,7 +445,10 @@ mod tests {
         let lines = parse("label equ 42").unwrap();
         assert_eq!(
             lines,
-            vec![ast::Line::Label("label"), ast::Line::Constant(42)]
+            vec![
+                ast::Line::Label("label"),
+                ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(42))))
+            ]
         );
 
         let lines =
@@ -479,10 +457,16 @@ mod tests {
             lines,
             vec![
                 ast::Line::Label("first"),
-                ast::Line::Constant(10),
+                ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(10)))),
                 ast::Line::Label("second"),
-                ast::Line::Constant(20),
+                ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(20)))),
             ]
         );
+    }
+
+    #[test]
+    fn expressions() {
+        let mut parser = Parser::new("2 + 3 * 4 + 5");
+        println!("{}", parser.parse_expression().unwrap());
     }
 }
