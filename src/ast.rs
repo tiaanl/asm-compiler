@@ -2,7 +2,7 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ByteRegister {
     AL,
     AH,
@@ -47,7 +47,7 @@ impl ByteRegister {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WordRegister {
     AX,
     CX,
@@ -92,7 +92,7 @@ impl WordRegister {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Register {
     Byte(ByteRegister),
     Word(WordRegister),
@@ -118,7 +118,7 @@ impl Register {
 }
 
 #[allow(clippy::upper_case_acronyms)]
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operation {
     // Data transfer
     MOV,   // Move
@@ -354,7 +354,7 @@ impl Operation {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Segment {
     CS,
     DS,
@@ -385,7 +385,7 @@ impl Segment {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DataSize {
     Byte,
     Word,
@@ -410,7 +410,7 @@ impl DataSize {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Value<'a> {
     Constant(i32),
     Label(&'a str),
@@ -427,7 +427,7 @@ impl<'a> std::fmt::Display for Value<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expression<'a> {
     // Infix operators:
     Add(Box<Expression<'a>>, Box<Expression<'a>>),
@@ -450,11 +450,12 @@ impl<'a> std::fmt::Display for Expression<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operand<'a> {
     Immediate(Box<Expression<'a>>),
     Address(Option<DataSize>, Box<Expression<'a>>, Option<Segment>),
     Register(Register),
+    Segment(Segment),
 }
 
 impl<'a> std::fmt::Display for Operand<'a> {
@@ -478,11 +479,13 @@ impl<'a> std::fmt::Display for Operand<'a> {
             }
 
             Operand::Register(register) => write!(f, "{}", register),
+
+            Operand::Segment(segment) => write!(f, "{}", segment),
         }
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operands<'a> {
     None,
     Destination(Operand<'a>),

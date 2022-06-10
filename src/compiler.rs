@@ -1,22 +1,35 @@
-#![allow(dead_code)]
-
 use crate::ast;
 use std::collections::HashMap;
 
 #[derive(Debug)]
-pub enum CompilerError {
-    // Unknown,
+pub enum CompilerError<'a> {
+    InvalidOperation(ast::Operation),
+    InvalidOperands(ast::Operands<'a>),
 }
 
 pub struct Compiler<'a> {
     lines: Vec<ast::Line<'a>>,
 }
 
+#[allow(dead_code)]
 #[derive(Debug)]
 struct Output<'a, 'b> {
     address: u32,
     bytes: Vec<u8>,
     line: &'b ast::Line<'a>,
+}
+
+fn encode_instruction<'a>(
+    instruction: &ast::Instruction<'a>,
+) -> Result<Vec<u8>, CompilerError<'a>> {
+    match instruction.operation {
+        ast::Operation::STI => Ok(vec![]),
+        ast::Operation::JMP => match &instruction.operands {
+            // Operands::Destination(destination) => Ok(vec![]),
+            _ => Err(CompilerError::InvalidOperands(instruction.operands.clone())),
+        },
+        _ => Err(CompilerError::InvalidOperation(instruction.operation)),
+    }
 }
 
 impl<'a> Compiler<'a> {
@@ -33,9 +46,9 @@ impl<'a> Compiler<'a> {
                 ast::Line::Label(label) => {
                     labels.insert(label, outputs.len());
                 }
-                line @ ast::Line::Instruction(_) => outputs.push(Output {
+                line @ ast::Line::Instruction(instruction) => outputs.push(Output {
                     address: 0,
-                    bytes: vec![],
+                    bytes: encode_instruction(instruction)?,
                     line,
                 }),
                 line @ ast::Line::Data(data) => outputs.push(Output {

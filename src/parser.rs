@@ -211,6 +211,9 @@ impl<'a> Parser<'a> {
                 if let Some(register) = ast::Register::from_str(identifier) {
                     self.next_token();
                     Ok(ast::Operand::Register(register))
+                } else if let Some(segment) = ast::Segment::from_str(identifier) {
+                    self.next_token();
+                    Ok(ast::Operand::Segment(segment))
                 } else if let Some(data_size) = ast::DataSize::from_str(identifier) {
                     self.next_token();
                     self.parse_operand(Some(data_size))
