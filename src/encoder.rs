@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::ast;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
