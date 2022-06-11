@@ -1,10 +1,21 @@
 use crate::ast;
+use crate::lexer::Span;
 use std::collections::HashMap;
 
 #[derive(Debug)]
 pub enum CompilerError<'a> {
-    InvalidOperation(ast::Operation),
-    InvalidOperands(ast::Operands<'a>),
+    InvalidOperation(Span, ast::Operation),
+    InvalidOperands(Span, ast::Operands<'a>),
+}
+
+impl<'a> CompilerError<'a> {
+    pub fn span(&self) -> &Span {
+        match self {
+            CompilerError::InvalidOperation(span, _) | CompilerError::InvalidOperands(span, _) => {
+                span
+            }
+        }
+    }
 }
 
 pub struct Compiler<'a> {
@@ -20,15 +31,22 @@ struct Output<'a, 'b> {
 }
 
 fn encode_instruction<'a>(
+    span: Span,
     instruction: &ast::Instruction<'a>,
 ) -> Result<Vec<u8>, CompilerError<'a>> {
     match instruction.operation {
         ast::Operation::STI => Ok(vec![]),
         ast::Operation::JMP => match &instruction.operands {
-            // Operands::Destination(destination) => Ok(vec![]),
-            _ => Err(CompilerError::InvalidOperands(instruction.operands.clone())),
+            ast::Operands::Destination(ref span, _) => Err(CompilerError::InvalidOperands(
+                span.start..span.end,
+                instruction.operands.clone(),
+            )),
+            _ => Err(CompilerError::InvalidOperands(
+                span,
+                instruction.operands.clone(),
+            )),
         },
-        _ => Err(CompilerError::InvalidOperation(instruction.operation)),
+        _ => Err(CompilerError::InvalidOperation(0..0, instruction.operation)),
     }
 }
 
@@ -43,12 +61,12 @@ impl<'a> Compiler<'a> {
 
         for line in &self.lines {
             match line {
-                ast::Line::Label(label) => {
+                ast::Line::Label(_, label) => {
                     labels.insert(label, outputs.len());
                 }
-                line @ ast::Line::Instruction(instruction) => outputs.push(Output {
+                line @ ast::Line::Instruction(ref span, instruction) => outputs.push(Output {
                     address: 0,
-                    bytes: encode_instruction(instruction)?,
+                    bytes: encode_instruction(span.start..span.end, instruction)?,
                     line,
                 }),
                 line @ ast::Line::Data(data) => outputs.push(Output {

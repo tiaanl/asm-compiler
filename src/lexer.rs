@@ -59,7 +59,7 @@ pub enum PunctuationKind {
     ForwardSlash,
 }
 
-type Span = Range<usize>;
+pub type Span = Range<usize>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {
@@ -74,7 +74,6 @@ pub enum Token {
 }
 
 impl Token {
-    #[cfg(test)]
     pub fn span(&self) -> &Span {
         match self {
             Token::Whitespace(ref span)

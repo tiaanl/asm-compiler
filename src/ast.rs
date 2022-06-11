@@ -1,3 +1,4 @@
+use crate::lexer::Span;
 use std::collections::HashMap;
 use std::fmt::Formatter;
 
@@ -487,17 +488,27 @@ impl<'a> std::fmt::Display for Operand<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operands<'a> {
-    None,
-    Destination(Operand<'a>),
-    DestinationAndSource(Operand<'a>, Operand<'a>),
+    None(Span),
+    Destination(Span, Operand<'a>),
+    DestinationAndSource(Span, Operand<'a>, Operand<'a>),
+}
+
+impl<'a> Operands<'a> {
+    pub fn span(&self) -> &Span {
+        match self {
+            Operands::None(span)
+            | Operands::Destination(span, _)
+            | Operands::DestinationAndSource(span, _, _) => span,
+        }
+    }
 }
 
 impl<'a> std::fmt::Display for Operands<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Operands::None => Ok(()),
-            Operands::Destination(destination) => write!(f, "{}", destination),
-            Operands::DestinationAndSource(destination, source) => {
+            Operands::None(_) => Ok(()),
+            Operands::Destination(_, destination) => write!(f, "{}", destination),
+            Operands::DestinationAndSource(_, destination, source) => {
                 write!(f, "{}, {}", destination, source)
             }
         }
@@ -512,7 +523,7 @@ pub struct Instruction<'a> {
 
 impl<'a> std::fmt::Display for Instruction<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        if let Operands::None = self.operands {
+        if let Operands::None(_) = self.operands {
             write!(f, "{:?}", self.operation)
         } else {
             write!(f, "{:?} {}", self.operation, self.operands)
@@ -522,8 +533,8 @@ impl<'a> std::fmt::Display for Instruction<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub enum Line<'a> {
-    Label(&'a str),
-    Instruction(Instruction<'a>),
+    Label(Span, &'a str),
+    Instruction(Span, Instruction<'a>),
     Data(Vec<u8>),
     Constant(Box<Expression<'a>>),
     Times(Box<Expression<'a>>),
@@ -532,8 +543,8 @@ pub enum Line<'a> {
 impl<'a> std::fmt::Display for Line<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Line::Label(name) => write!(f, "{}:", name),
-            Line::Instruction(instruction) => write!(f, "    {}", instruction),
+            Line::Label(_, name) => write!(f, "{}:", name),
+            Line::Instruction(_, instruction) => write!(f, "    {}", instruction),
             Line::Data(data) => write!(f, "    {:?}", data),
             Line::Constant(value) => write!(f, "    equ {}", value),
             Line::Times(expression) => write!(f, "    times {}", expression),

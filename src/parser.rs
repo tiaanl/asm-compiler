@@ -48,9 +48,12 @@ impl<'a> Parser<'a> {
                 Token::Identifier(ref span) => {
                     let identifier = self.lexer.source_at(span);
                     if let Some(operation) = ast::Operation::from_str(identifier) {
+                        let start = self.token.span().start;
                         self.next_token();
                         let instruction = self.parse_instruction(operation)?;
-                        self.lines.push(ast::Line::Instruction(instruction));
+                        let end = self.token.span().end;
+                        self.lines
+                            .push(ast::Line::Instruction(start..end, instruction));
                         continue;
                     } else {
                         match identifier.to_lowercase().as_str() {
@@ -142,6 +145,8 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_label(&mut self, name: &'a str) -> Result<ast::Line<'a>, ParserError> {
+        let start = self.token.span().start;
+
         // Consume the token that holds the label.
         self.next_token();
 
@@ -158,7 +163,9 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        Ok(ast::Line::Label(name))
+        let end = self.token.span().end;
+
+        Ok(ast::Line::Label(start..end, name))
     }
 
     fn parse_instruction(
@@ -176,24 +183,31 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_operands(&mut self) -> Result<ast::Operands<'a>, ParserError> {
+        let start = self.token.span().start;
+
         if matches!(self.token, Token::Comment(_)) {
             self.next_token();
         }
 
         if matches!(self.token, Token::NewLine(_) | Token::EndOfFile(_)) {
-            Ok(ast::Operands::None)
+            Ok(ast::Operands::None(start..start))
         } else {
             let destination = self.parse_operand(None)?;
 
             match self.token {
-                Token::NewLine(_) | Token::EndOfFile(_) => {
-                    Ok(ast::Operands::Destination(destination))
-                }
+                Token::NewLine(_) | Token::EndOfFile(_) => Ok(ast::Operands::Destination(
+                    start..self.token.span().end,
+                    destination,
+                )),
                 Token::Punctuation(_, PunctuationKind::Comma) => {
                     self.next_token();
                     let source = self.parse_operand(None)?;
 
-                    Ok(ast::Operands::DestinationAndSource(destination, source))
+                    Ok(ast::Operands::DestinationAndSource(
+                        start..self.token.span().end,
+                        destination,
+                        source,
+                    ))
                 }
 
                 _ => Err(self.expected("An unexpected token was encountered.".to_owned())),

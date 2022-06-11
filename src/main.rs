@@ -72,7 +72,10 @@ fn main() {
         let mut compiler = Compiler::new(lines);
         match compiler.compile() {
             Ok(_) => println!("DONE"),
-            Err(err) => eprintln!("{:?}", err),
+            Err(err) => {
+                eprintln!("{:?}", err);
+                print_source_pos(source, err.span().start, Some(args.source.as_str()))
+            }
         }
     }
 }

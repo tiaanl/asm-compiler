@@ -75,11 +75,11 @@ impl<'a> ast::Operand<'a> {
 fn encode<'a>(instruction: &ast::Instruction<'a>) {
     for entry in TABLE {
         let operands = match &instruction.operands {
-            ast::Operands::None => (OperandType::None, OperandType::None),
-            ast::Operands::Destination(destination) => {
+            ast::Operands::None(_) => (OperandType::None, OperandType::None),
+            ast::Operands::Destination(_, destination) => {
                 (destination.operand_type(), OperandType::None)
             }
-            ast::Operands::DestinationAndSource(destination, source) => {
+            ast::Operands::DestinationAndSource(_, destination, source) => {
                 (destination.operand_type(), source.operand_type())
             }
         };
