@@ -190,7 +190,7 @@ impl<'a> Parser<'a> {
         }
 
         if matches!(self.token, Token::NewLine(_) | Token::EndOfFile(_)) {
-            Ok(ast::Operands::None(start..start))
+            Ok(ast::Operands::None(start..self.token.span().end))
         } else {
             let destination = self.parse_operand(None)?;
 

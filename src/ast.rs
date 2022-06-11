@@ -494,6 +494,7 @@ pub enum Operands<'a> {
 }
 
 impl<'a> Operands<'a> {
+    #[allow(unused)]
     pub fn span(&self) -> &Span {
         match self {
             Operands::None(span)

@@ -1,9 +1,27 @@
 #![allow(unused)]
 
 use crate::ast;
+use crate::ast::{DataSize, Instruction, Operand, Operands, Register};
+use crate::lexer::Span;
+
+#[derive(Debug)]
+pub enum EncodeError {
+    InvalidOperands(Span),
+}
+
+impl std::fmt::Display for EncodeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::InvalidOperands(_) => write!(f, "Invalid operands"),
+        }
+    }
+}
+
+type Encoder = fn(&ast::Instruction) -> Result<Vec<u8>, EncodeError>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OperandSize {
+    Unknown,
     Byte,
     Word,
     MaybeWord,
@@ -12,34 +30,111 @@ enum OperandSize {
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OperandType {
     None,
-    Immediate,   // 0x10
-    Accumulator, // AL/AX
-    Counter,     // CL/CX
-    Register,    // AX/BX/CL/DH
-    Segment,     // DS/CS
-    Memory,      // [data]/[BX + 10]
+    Immediate,        // 0x10
+    Accumulator,      // AL/AX
+    Counter,          // CL/CX
+    Register,         // AX/BX/CL/DH
+    RegisterOrMemory, // AX/BX/CL/DH/[data]/[BX + 10]
+    Segment,          // DS/CS
+    Memory,           // [data]/[BX + 10]
 }
 
 struct EncodeData {
     op_code: u8,
+    operation: ast::Operation,
     destination: OperandType,
+    destination_size: OperandSize,
     source: OperandType,
+    source_size: OperandSize,
+    encoder: Encoder,
 }
 
-impl EncodeData {
-    const fn new(op_code: u8, destination: OperandType, source: OperandType) -> Self {
-        Self {
-            op_code,
-            destination,
-            source,
+macro_rules! ed {
+    ($op_code:literal, $operation:ident, $destination:ident, $destination_size:ident, $source:ident, $source_size:ident, $encoder:ident) => {{
+        EncodeData {
+            op_code: $op_code,
+            operation: ast::Operation::$operation,
+            destination: OperandType::$destination,
+            destination_size: OperandSize::$destination_size,
+            source: OperandType::$source,
+            source_size: OperandSize::$source_size,
+            encoder: $encoder,
         }
+    }};
+}
+
+fn encode_register_or_memory_and_register<'a>(
+    instruction: &ast::Instruction<'a>,
+) -> Result<Vec<u8>, EncodeError> {
+    todo!()
+}
+
+#[rustfmt::skip]
+const TABLE: &[EncodeData] = &[
+    // 04 ib         ADD AL, imm8          Add imm8 to AL
+    ed!(0x04, ADD, Accumulator, Byte, Immediate, Byte, encode_register_or_memory_and_register),
+
+    // 05 iw         ADD AX, imm16         Add imm16 to AX
+    ed!(0x05, ADD, Accumulator, Word, Immediate, Word, encode_register_or_memory_and_register),
+
+    // 00 /r         ADD r/m8, r8          Add r8 to r/m8
+    ed!(0x00, ADD, RegisterOrMemory, Byte, Register, Byte, encode_register_or_memory_and_register),
+    
+    // 01 /r         ADD r/m16, r16        Add r16 to r/m16
+    ed!(0x01, ADD, RegisterOrMemory, Word, Register, Word, encode_register_or_memory_and_register),
+
+    // 02 /r         ADD r8, r/m8          Add r/m8 to r8
+    ed!(0x02, ADD, Register, Byte, RegisterOrMemory, Byte, encode_register_or_memory_and_register),
+
+    // 03 /r         ADD r16, r/m16        Add r/m16 to r16
+    ed!(0x03, ADD, Register, Word, RegisterOrMemory, Word, encode_register_or_memory_and_register),
+
+    // 80 /0 ib      ADD r/m8, imm8        Add imm8 to r/m8
+    // 81 /0 iw      ADD r/m16, imm16      Add imm16 to r/m16
+    // 83 /0 ib      ADD r/m16, imm8       Add sign-extended imm8 to r/m16
+];
+
+impl<'a> PartialEq<EncodeData> for ast::Instruction<'a> {
+    fn eq(&self, other: &EncodeData) -> bool {
+        if self.operation != other.operation {
+            return false;
+        }
+
+        match &self.operands {
+            Operands::None(_) => return true,
+
+            Operands::Destination(_, destination) => {
+                if destination.operand_type() == other.destination
+                    && destination.operand_size() == other.destination_size
+                {
+                    return true;
+                }
+            }
+
+            Operands::DestinationAndSource(_, destination, source) => {
+                if destination.operand_type() == other.destination
+                    && destination.operand_size() == other.destination_size
+                    && source.operand_type() == other.source
+                    && source.operand_size() == other.source_size
+                {
+                    return true;
+                }
+            }
+        }
+
+        false
     }
 }
 
-const TABLE: &[EncodeData] = &[
-    EncodeData::new(0x00, OperandType::Register, OperandType::Register),
-    EncodeData::new(0x01, OperandType::Register, OperandType::Immediate),
-];
+fn find_encode_data<'a>(instruction: &ast::Instruction<'a>) -> Option<&'static EncodeData> {
+    for entry in TABLE {
+        if instruction == entry {
+            return Some(entry);
+        }
+    }
+
+    None
+}
 
 impl<'a> ast::Operand<'a> {
     fn operand_type(&self) -> OperandType {
@@ -64,26 +159,43 @@ impl<'a> ast::Operand<'a> {
 
     fn operand_size(&self) -> OperandSize {
         match self {
-            ast::Operand::Immediate(_) => todo!(),
-            ast::Operand::Address(_, _, _) => todo!(),
-            ast::Operand::Register(_) => todo!(),
-            ast::Operand::Segment(_) => todo!(),
+            ast::Operand::Immediate(_) => OperandSize::Unknown,
+
+            ast::Operand::Address(Some(data_size), _, _) => match data_size {
+                DataSize::Byte => OperandSize::Byte,
+                DataSize::Word => OperandSize::Word,
+            },
+
+            ast::Operand::Register(register) => match register {
+                Register::Byte(_) => OperandSize::Byte,
+                Register::Word(_) => OperandSize::Word,
+            },
+
+            ast::Operand::Segment(_) => OperandSize::Word,
+
+            _ => OperandSize::Unknown,
         }
     }
 }
 
-fn encode<'a>(instruction: &ast::Instruction<'a>) {
-    for entry in TABLE {
-        let operands = match &instruction.operands {
-            ast::Operands::None(_) => (OperandType::None, OperandType::None),
-            ast::Operands::Destination(_, destination) => {
-                (destination.operand_type(), OperandType::None)
-            }
-            ast::Operands::DestinationAndSource(_, destination, source) => {
-                (destination.operand_type(), source.operand_type())
-            }
-        };
-    }
+pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeError> {
+    let encode_data = match find_encode_data(instruction) {
+        Some(encode_data) => encode_data,
+        None => {
+            let span = instruction.operands.span();
+            return Err(EncodeError::InvalidOperands(span.start..span.end));
+        }
+    };
+
+    dbg!(
+        encode_data.operation,
+        encode_data.destination,
+        encode_data.destination_size,
+        encode_data.source,
+        encode_data.source_size
+    );
+
+    (encode_data.encoder)(instruction)
 }
 
 #[cfg(test)]

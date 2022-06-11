@@ -1,19 +1,27 @@
 use crate::ast;
 use crate::lexer::Span;
 use std::collections::HashMap;
+use std::fmt::Formatter;
 
 #[derive(Debug)]
-pub enum CompilerError<'a> {
-    InvalidOperation(Span, ast::Operation),
-    InvalidOperands(Span, ast::Operands<'a>),
+pub enum CompilerError {
+    EncodeError(Span, crate::encoder::EncodeError),
 }
 
-impl<'a> CompilerError<'a> {
+impl std::fmt::Display for CompilerError {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::EncodeError(_, err) => {
+                write!(f, "{}", err)
+            }
+        }
+    }
+}
+
+impl CompilerError {
     pub fn span(&self) -> &Span {
         match self {
-            CompilerError::InvalidOperation(span, _) | CompilerError::InvalidOperands(span, _) => {
-                span
-            }
+            CompilerError::EncodeError(span, _) => span,
         }
     }
 }
@@ -30,23 +38,13 @@ struct Output<'a, 'b> {
     line: &'b ast::Line<'a>,
 }
 
-fn encode_instruction<'a>(
+fn encode_instruction(
     span: Span,
-    instruction: &ast::Instruction<'a>,
-) -> Result<Vec<u8>, CompilerError<'a>> {
-    match instruction.operation {
-        ast::Operation::STI => Ok(vec![]),
-        ast::Operation::JMP => match &instruction.operands {
-            ast::Operands::Destination(ref span, _) => Err(CompilerError::InvalidOperands(
-                span.start..span.end,
-                instruction.operands.clone(),
-            )),
-            _ => Err(CompilerError::InvalidOperands(
-                span,
-                instruction.operands.clone(),
-            )),
-        },
-        _ => Err(CompilerError::InvalidOperation(0..0, instruction.operation)),
+    instruction: &ast::Instruction,
+) -> Result<Vec<u8>, CompilerError> {
+    match crate::encoder::encode(instruction) {
+        Ok(bytes) => Ok(bytes),
+        Err(err) => Err(CompilerError::EncodeError(span, err)),
     }
 }
 
