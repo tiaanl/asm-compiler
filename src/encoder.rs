@@ -17,7 +17,7 @@ impl std::fmt::Display for EncodeError {
     }
 }
 
-type Encoder = fn(&ast::Instruction) -> Result<Vec<u8>, EncodeError>;
+type Encoder = fn(&ast::Instruction, &EncodeData) -> Result<Vec<u8>, EncodeError>;
 
 #[derive(Copy, Clone, Debug, Eq, PartialEq)]
 enum OperandSize {
@@ -63,35 +63,49 @@ macro_rules! ed {
     }};
 }
 
+fn encode_op_code_only<'a>(
+    instruction: &ast::Instruction<'a>,
+    encode_data: &EncodeData,
+) -> Result<Vec<u8>, EncodeError> {
+    Ok(vec![encode_data.op_code])
+}
+
 fn encode_register_or_memory_and_register<'a>(
     instruction: &ast::Instruction<'a>,
+    encode_data: &EncodeData,
 ) -> Result<Vec<u8>, EncodeError> {
     todo!()
 }
 
 #[rustfmt::skip]
 const TABLE: &[EncodeData] = &[
-    // 04 ib         ADD AL, imm8          Add imm8 to AL
+    // 04 ib        ADD AL, imm8            Add imm8 to AL
     ed!(0x04, ADD, Accumulator, Byte, Immediate, Byte, encode_register_or_memory_and_register),
 
-    // 05 iw         ADD AX, imm16         Add imm16 to AX
+    // 05 iw        ADD AX, imm16           Add imm16 to AX
     ed!(0x05, ADD, Accumulator, Word, Immediate, Word, encode_register_or_memory_and_register),
 
-    // 00 /r         ADD r/m8, r8          Add r8 to r/m8
+    // 00 /r        ADD r/m8, r8            Add r8 to r/m8
     ed!(0x00, ADD, RegisterOrMemory, Byte, Register, Byte, encode_register_or_memory_and_register),
     
-    // 01 /r         ADD r/m16, r16        Add r16 to r/m16
+    // 01 /r        ADD r/m16, r16          Add r16 to r/m16
     ed!(0x01, ADD, RegisterOrMemory, Word, Register, Word, encode_register_or_memory_and_register),
 
-    // 02 /r         ADD r8, r/m8          Add r/m8 to r8
+    // 02 /r        ADD r8, r/m8            Add r/m8 to r8
     ed!(0x02, ADD, Register, Byte, RegisterOrMemory, Byte, encode_register_or_memory_and_register),
 
-    // 03 /r         ADD r16, r/m16        Add r/m16 to r16
+    // 03 /r        ADD r16, r/m16          Add r/m16 to r16
     ed!(0x03, ADD, Register, Word, RegisterOrMemory, Word, encode_register_or_memory_and_register),
 
-    // 80 /0 ib      ADD r/m8, imm8        Add imm8 to r/m8
-    // 81 /0 iw      ADD r/m16, imm16      Add imm16 to r/m16
-    // 83 /0 ib      ADD r/m16, imm8       Add sign-extended imm8 to r/m16
+    // 80 /0 ib     ADD r/m8, imm8          Add imm8 to r/m8
+    // 81 /0 iw     ADD r/m16, imm16        Add imm16 to r/m16
+    // 83 /0 ib     ADD r/m16, imm8         Add sign-extended imm8 to r/m16
+
+    // F8           CLC                     Clear CF flag.
+    ed!(0xF8, CLC, None, Unknown, None, Unknown, encode_op_code_only),
+
+    // F9           STC                     Set CF flag.
+    ed!(0xF9, STC, None, Unknown, None, Unknown, encode_op_code_only),
 ];
 
 impl<'a> PartialEq<EncodeData> for ast::Instruction<'a> {
@@ -195,7 +209,7 @@ pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeE
         encode_data.source_size
     );
 
-    (encode_data.encoder)(instruction)
+    (encode_data.encoder)(instruction, encode_data)
 }
 
 #[cfg(test)]
