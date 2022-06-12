@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::encoder::{str_to_operation, Operation};
 use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
 
 #[derive(Debug)]
@@ -47,7 +48,7 @@ impl<'a> Parser<'a> {
 
                 Token::Identifier(ref span) => {
                     let identifier = self.lexer.source_at(span);
-                    if let Some(operation) = ast::Operation::from_str(identifier) {
+                    if let Some(operation) = str_to_operation(identifier) {
                         let start = self.token.span().start;
                         self.next_token();
                         let instruction = self.parse_instruction(operation)?;
@@ -170,7 +171,7 @@ impl<'a> Parser<'a> {
 
     fn parse_instruction(
         &mut self,
-        operation: ast::Operation,
+        operation: Operation,
     ) -> Result<ast::Instruction<'a>, ParserError> {
         let operands = self.parse_operands()?;
 

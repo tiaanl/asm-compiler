@@ -1,0 +1,11 @@
+﻿mnemonic,op_code,destination,source
+add,0x04,al,imm_8
+add,0x05,ax,imm_16
+add,0x00,reg_mem_8,reg_8
+add,0x01,reg_mem_16,reg_16
+add,0x02,reg_8,reg_mem_8
+add,0x03,reg_16,reg_mem_16
+clc,0xF8,,
+stc,0xF9,,
+jmp,0xEB,disp_8,
+jmp,0xE9,disp_16,
