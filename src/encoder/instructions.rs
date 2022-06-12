@@ -23,23 +23,26 @@ pub const DATA: &[InstructionData] = &[
     id!(Stc, 0xF9, none, none, encode_none_and_none),
     id!(Jmp, 0xEB, disp_8, none, encode_disp_8_and_none),
     id!(Jmp, 0xE9, disp_16, none, encode_disp_16_and_none),
+    id!(Hlt, 0xF4, none, none, encode_none_and_none),
 ];
 
 #[derive(Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Operation {
+    Hlt,
     Add,
-    Clc,
-    Jmp,
     Stc,
+    Jmp,
+    Clc,
 }
 
 pub fn str_to_operation(s: &str) -> Option<Operation> {
     Some(match s {
+        "hlt" => Operation::Hlt,
         "add" => Operation::Add,
-        "clc" => Operation::Clc,
-        "jmp" => Operation::Jmp,
         "stc" => Operation::Stc,
+        "jmp" => Operation::Jmp,
+        "clc" => Operation::Clc,
         _ => return None,
     })
 }

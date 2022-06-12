@@ -1,7 +1,6 @@
 mod instructions;
 
 use crate::ast;
-use crate::ast::{ByteRegister, Operand, Operands, Register, WordRegister};
 use crate::lexer::Span;
 
 pub use instructions::{str_to_operation, Operation};
@@ -58,10 +57,10 @@ fn encode_al_and_imm_8(
     data: &InstructionData,
 ) -> Result<Vec<u8>, EncodeError> {
     match &instruction.operands {
-        Operands::DestinationAndSource(
+        ast::Operands::DestinationAndSource(
             _,
-            Operand::Register(Register::Byte(ByteRegister::AL)),
-            Operand::Immediate(expr),
+            ast::Operand::Register(ast::Register::Byte(ast::ByteRegister::AL)),
+            ast::Operand::Immediate(expr),
         ) => {
             let value = expr.value();
             let [lo, _, _, _] = value.to_le_bytes();
@@ -76,10 +75,10 @@ fn encode_ax_and_imm_16(
     data: &InstructionData,
 ) -> Result<Vec<u8>, EncodeError> {
     match &instruction.operands {
-        Operands::DestinationAndSource(
+        ast::Operands::DestinationAndSource(
             _,
-            Operand::Register(Register::Word(WordRegister::AX)),
-            Operand::Immediate(expr),
+            ast::Operand::Register(ast::Register::Word(ast::WordRegister::AX)),
+            ast::Operand::Immediate(expr),
         ) => {
             let value = expr.value();
             let [lo, hi, _, _] = value.to_le_bytes();
@@ -140,25 +139,25 @@ fn encode_disp_16_and_none(
 
 fn operand_to_type(operand: &ast::Operand) -> OperandType {
     match operand {
-        Operand::Immediate(expr) => {
+        ast::Operand::Immediate(expr) => {
             if expr.value() < 256 {
                 OperandType::imm_8
             } else {
                 OperandType::imm_16
             }
         }
-        Operand::Address(_, _, _) => todo!(),
-        Operand::Register(register) => match register {
-            Register::Byte(byte_register) => match byte_register {
+        ast::Operand::Address(_, _, _) => todo!(),
+        ast::Operand::Register(register) => match register {
+            ast::Register::Byte(byte_register) => match byte_register {
                 ast::ByteRegister::AL => OperandType::al,
                 _ => OperandType::reg_8,
             },
-            Register::Word(word_register) => match word_register {
+            ast::Register::Word(word_register) => match word_register {
                 ast::WordRegister::AX => OperandType::ax,
                 _ => OperandType::reg_16,
             },
         },
-        Operand::Segment(_) => todo!(),
+        ast::Operand::Segment(_) => todo!(),
     }
 }
 
@@ -177,9 +176,11 @@ fn coerce_operand_types(
 
 fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static InstructionData> {
     let (destination, source) = match &instruction.operands {
-        Operands::None(_) => (OperandType::none, OperandType::none),
-        Operands::Destination(_, destination) => (operand_to_type(destination), OperandType::none),
-        Operands::DestinationAndSource(_, destination, source) => {
+        ast::Operands::None(_) => (OperandType::none, OperandType::none),
+        ast::Operands::Destination(_, destination) => {
+            (operand_to_type(destination), OperandType::none)
+        }
+        ast::Operands::DestinationAndSource(_, destination, source) => {
             (operand_to_type(destination), operand_to_type(source))
         }
     };
@@ -242,55 +243,48 @@ pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeE
 mod tests {
     use super::*;
 
-    fn immediate<'a>(value: i32) -> ast::Operand<'a> {
-        ast::Operand::Immediate(Box::new(ast::Expression::Term(ast::Value::Constant(value))))
-    }
-
-    fn byte_register<'a>(register: ast::ByteRegister) -> ast::Operand<'a> {
-        ast::Operand::Register(ast::Register::Byte(register))
-    }
-
-    fn word_register<'a>(register: ast::WordRegister) -> ast::Operand<'a> {
-        ast::Operand::Register(ast::Register::Word(register))
-    }
-
-    fn memory<'a>() -> ast::Operand<'a> {
-        ast::Operand::Address(
-            None,
-            Box::new(ast::Expression::Term(ast::Value::Constant(0))),
-            None,
-        )
-    }
-
     #[test]
-    fn operand_to_operand_type() {
-        assert_eq!(OperandType::Immediate, immediate(10).operand_type());
-
+    fn operand_types() {
         assert_eq!(
-            OperandType::Accumulator,
-            word_register(ast::WordRegister::AX).operand_type()
-        );
-        assert_eq!(
-            OperandType::Accumulator,
-            byte_register(ast::ByteRegister::AL).operand_type()
-        );
-        assert_eq!(
-            OperandType::Counter,
-            word_register(ast::WordRegister::CX).operand_type()
-        );
-        assert_eq!(
-            OperandType::Counter,
-            byte_register(ast::ByteRegister::CL).operand_type()
-        );
-        assert_eq!(
-            OperandType::Register,
-            word_register(ast::WordRegister::SP).operand_type()
-        );
-        assert_eq!(
-            OperandType::Register,
-            byte_register(ast::ByteRegister::DH).operand_type()
+            OperandType::imm_8,
+            operand_to_type(&ast::Operand::Immediate(Box::new(ast::Expression::Term(
+                ast::Value::Constant(10)
+            ))))
         );
 
-        assert_eq!(OperandType::Memory, memory().operand_type());
+        assert_eq!(
+            OperandType::imm_16,
+            operand_to_type(&ast::Operand::Immediate(Box::new(ast::Expression::Term(
+                ast::Value::Constant(256)
+            ))))
+        );
+
+        assert_eq!(
+            OperandType::al,
+            operand_to_type(&ast::Operand::Register(ast::Register::Byte(
+                ast::ByteRegister::AL
+            )))
+        );
+
+        assert_eq!(
+            OperandType::ax,
+            operand_to_type(&ast::Operand::Register(ast::Register::Word(
+                ast::WordRegister::AX
+            )))
+        );
+
+        assert_eq!(
+            OperandType::reg_8,
+            operand_to_type(&ast::Operand::Register(ast::Register::Byte(
+                ast::ByteRegister::DL
+            )))
+        );
+
+        assert_eq!(
+            OperandType::reg_16,
+            operand_to_type(&ast::Operand::Register(ast::Register::Word(
+                ast::WordRegister::DX
+            )))
+        );
     }
 }

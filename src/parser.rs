@@ -148,23 +148,21 @@ impl<'a> Parser<'a> {
     fn parse_label(&mut self, name: &'a str) -> Result<ast::Line<'a>, ParserError> {
         let start = self.token.span().start;
 
+        // We only capture the label part.
+        let end = self.token.span().end;
+
         // Consume the token that holds the label.
         self.next_token();
 
         // Skip the optional colon after a label.
         if matches!(self.token, Token::Punctuation(_, PunctuationKind::Colon)) {
             self.next_token();
-
-            // If the token after the ":" is a new_line, then we should consume it as well.
-            if matches!(self.token, Token::NewLine(_)) {
-                self.next_token();
-            }
-        } else if matches!(self.token, Token::NewLine(_)) {
-            // A new line after the label should also be consumed.
-            self.next_token();
         }
 
-        let end = self.token.span().end;
+        // We can have a label on a single line, so consume any new lines as well.
+        if matches!(self.token, Token::NewLine(_)) {
+            self.next_token();
+        }
 
         Ok(ast::Line::Label(start..end, name))
     }
@@ -442,11 +440,14 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                ast::Line::Label("start"),
-                ast::Line::Instruction(ast::Instruction {
-                    operation: ast::Operation::HLT,
-                    operands: ast::Operands::None,
-                })
+                ast::Line::Label(0..5, "start"),
+                ast::Line::Instruction(
+                    6..9,
+                    ast::Instruction {
+                        operation: Operation::Hlt,
+                        operands: ast::Operands::None(9..9),
+                    }
+                )
             ]
         );
     }
@@ -457,13 +458,16 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                ast::Line::Label("start"),
-                ast::Line::Label("begin"),
-                ast::Line::Label("begin2"),
-                ast::Line::Instruction(ast::Instruction {
-                    operation: ast::Operation::HLT,
-                    operands: ast::Operands::None,
-                })
+                ast::Line::Label(0..5, "start"),
+                ast::Line::Label(6..11, "begin"),
+                ast::Line::Label(13..19, "begin2"),
+                ast::Line::Instruction(
+                    20..23,
+                    ast::Instruction {
+                        operation: Operation::Hlt,
+                        operands: ast::Operands::None(23..23),
+                    }
+                )
             ]
         );
     }
@@ -474,7 +478,7 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                ast::Line::Label("label"),
+                ast::Line::Label(0..5, "label"),
                 ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(42))))
             ]
         );
@@ -484,9 +488,9 @@ mod tests {
         assert_eq!(
             lines,
             vec![
-                ast::Line::Label("first"),
+                ast::Line::Label(0..5, "first"),
                 ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(10)))),
-                ast::Line::Label("second"),
+                ast::Line::Label(28..34, "second"),
                 ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(20)))),
             ]
         );
