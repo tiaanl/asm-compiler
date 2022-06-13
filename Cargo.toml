@@ -10,4 +10,5 @@ clap = { version = "3.1", features = ["derive"] }
 [build-dependencies]
 csv = "1.1"
 Inflector = "0.11"
+nom = "7.1"
 serde = { version = "1.0", features = ["derive"] }

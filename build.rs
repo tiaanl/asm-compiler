@@ -1,5 +1,7 @@
 use inflector::Inflector;
-use serde::Deserialize;
+use nom::IResult;
+use serde::de::Error;
+use serde::{Deserialize, Deserializer};
 use std::collections::HashSet;
 use std::fs::File;
 use std::io::Write;
@@ -10,6 +12,8 @@ struct Record {
     op_code: String,
     destination: String,
     source: String,
+    #[serde(deserialize_with = "do_code")]
+    encoder: Code,
 }
 
 fn operand_to_type(operand: &str) -> String {
@@ -20,9 +24,30 @@ fn operand_to_type(operand: &str) -> String {
     }
 }
 
+#[derive(Debug)]
+enum Code {
+    Unknown,
+}
+
+fn parse_record(input: &str) -> IResult<&str, Code> {
+    Ok((input, Code::Unknown))
+}
+
+fn do_code<'de, D>(deserializer: D) -> Result<Code, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    let s: &str = serde::de::Deserialize::deserialize(deserializer)?;
+
+    match parse_record(s) {
+        Ok((_, code)) => Ok(code),
+        Err(_) => Err(D::Error::custom("test")),
+    }
+}
+
 fn write_record(out: &mut File, record: &Record) {
     let encoder = format!(
-        "encode_{}_and_{}",
+        "{}_and_{}",
         operand_to_type(record.destination.as_str()),
         operand_to_type(record.source.as_str())
     );
@@ -33,12 +58,12 @@ fn write_record(out: &mut File, record: &Record) {
         record.op_code,
         operand_to_type(record.destination.as_str()),
         operand_to_type(record.source.as_str()),
-        encoder
+        encoder,
     );
     out.write_all(line.as_bytes()).unwrap();
 }
 
-const HEADER: &str = "use super::{InstructionData, OperandType};
+const HEADER: &str = "use super::{EncoderTrait, InstructionData, OperandType};
 
 macro_rules! id {
     ($operation:ident, $op_code:literal, $destination:ident, $source:ident, $encoder:ident) => {{
@@ -47,7 +72,8 @@ macro_rules! id {
             op_code: $op_code,
             destination: OperandType::$destination,
             source: OperandType::$source,
-            encoder: super::$encoder,
+            encoder: super::$encoder::encode,
+            sizer: super::$encoder::size,
         }
     }};
 }
@@ -68,7 +94,7 @@ fn main() {
     let mut out = File::create("src/encoder/instructions.rs").unwrap();
 
     out.write_all(HEADER.as_bytes()).unwrap();
-    out.write_all("pub const DATA: &[InstructionData] = &[\n".as_bytes())
+    out.write_all("#[rustfmt::skip]\npub const DATA: &[InstructionData] = &[\n".as_bytes())
         .unwrap();
 
     for record in &records {

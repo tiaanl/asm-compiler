@@ -2,6 +2,7 @@ mod instructions;
 
 use crate::ast;
 use crate::lexer::Span;
+use ast::Instruction;
 
 pub use instructions::{str_to_operation, Operation};
 
@@ -18,7 +19,8 @@ impl EncodeError {
     }
 }
 
-type Encoder = fn(&ast::Instruction, &InstructionData) -> Result<Vec<u8>, EncodeError>;
+type Encoder = fn(&Instruction, &InstructionData) -> Result<Vec<u8>, EncodeError>;
+type Sizer = fn(&Instruction, &InstructionData) -> Result<u32, EncodeError>;
 
 impl std::fmt::Display for EncodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -32,16 +34,41 @@ impl std::fmt::Display for EncodeError {
 #[derive(Debug, Eq, PartialEq)]
 pub enum OperandType {
     none,
-    imm_8,
-    imm_16,
+
+    one,
+
+    imm,
+    imm8,
+    imm16,
+
+    sbyteword,
+    sbyteword16,
+
     al,
     ax,
-    reg_8,
-    reg_16,
-    reg_mem_8,
-    reg_mem_16,
-    disp_8,
-    disp_16,
+    cl,
+    cx,
+    dx,
+    reg8,
+    reg16,
+
+    es,
+    cs,
+    ss,
+    ds,
+    seg,
+
+    mem,
+    mem8,
+    mem16,
+
+    rm8,
+    rm16,
+
+    disp8,
+    disp16,
+
+    seg_off,
 }
 
 pub struct InstructionData {
@@ -50,111 +77,124 @@ pub struct InstructionData {
     pub destination: OperandType,
     pub source: OperandType,
     pub encoder: Encoder,
+    pub sizer: Sizer,
 }
 
-fn encode_al_and_imm_8(
-    instruction: &ast::Instruction,
-    data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    match &instruction.operands {
-        ast::Operands::DestinationAndSource(
-            _,
-            ast::Operand::Register(ast::Register::Byte(ast::ByteRegister::AL)),
-            ast::Operand::Immediate(expr),
-        ) => {
-            let value = expr.value();
-            let [lo, _, _, _] = value.to_le_bytes();
-            Ok(vec![data.op_code, lo])
+trait EncoderTrait {
+    fn encode(instruction: &Instruction, data: &InstructionData) -> Result<Vec<u8>, EncodeError>;
+
+    fn size(instruction: &Instruction, data: &InstructionData) -> Result<u32, EncodeError>;
+}
+
+macro_rules! encoder {
+    ($name:ident, $encode:expr, $size:expr) => {
+        #[allow(non_camel_case_types)]
+        pub struct $name;
+
+        impl EncoderTrait for $name {
+            #[inline]
+            fn encode(
+                instruction: &Instruction,
+                data: &InstructionData,
+            ) -> Result<Vec<u8>, EncodeError> {
+                $encode(instruction, data)
+            }
+
+            #[inline]
+            fn size(instruction: &Instruction, data: &InstructionData) -> Result<u32, EncodeError> {
+                $size(instruction, data)
+            }
         }
-        _ => Err(EncodeError::InvalidOperands(0..0)),
-    }
+    };
 }
 
-fn encode_ax_and_imm_16(
-    instruction: &ast::Instruction,
-    data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    match &instruction.operands {
-        ast::Operands::DestinationAndSource(
-            _,
-            ast::Operand::Register(ast::Register::Word(ast::WordRegister::AX)),
-            ast::Operand::Immediate(expr),
-        ) => {
-            let value = expr.value();
-            let [lo, hi, _, _] = value.to_le_bytes();
-            Ok(vec![data.op_code, lo, hi])
-        }
-        _ => Err(EncodeError::InvalidOperands(0..0)),
-    }
-}
+// fn encode(
+//     _instruction: &Instruction,
+//     _data: &InstructionData,
+// ) -> Result<Vec<u8>, EncodeError> $encode
+//
+// fn size(
+//     _instruction: &Instruction,
+//     _data: &InstructionData,
+// ) -> Result<u32, EncodeError> $size
 
-fn encode_none_and_none(
-    _instruction: &ast::Instruction,
-    data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    Ok(vec![data.op_code])
-}
+encoder!(al_and_dx, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(al_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(al_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ax_and_dx, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ax_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ax_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ax_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ax_and_sbyteword, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(cs_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ds_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(dx_and_al, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(dx_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(es_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(imm16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(imm_and_al, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(imm_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(imm_and_cx, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(imm_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_al, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_imm16, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_imm8, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_reg8, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_sbyteword16, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(mem_and_seg, |_, _| { todo!() }, |_, _| { todo!() });
 
-fn encode_reg_mem_8_and_reg_8(
-    _instruction: &ast::Instruction,
-    _data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    todo!()
-}
+encoder!(
+    none_and_none,
+    |_, d: &InstructionData| { Ok(vec![d.op_code]) },
+    |_, _| { Ok(1) }
+);
 
-fn encode_reg_mem_16_and_reg_16(
-    _instruction: &ast::Instruction,
-    _data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    todo!()
-}
-
-fn encode_reg_8_and_reg_mem_8(
-    _instruction: &ast::Instruction,
-    _data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    todo!()
-}
-
-fn encode_reg_16_and_reg_mem_16(
-    _instruction: &ast::Instruction,
-    _data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    todo!()
-}
-
-fn encode_disp_8_and_none(
-    _instruction: &ast::Instruction,
-    _data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    todo!()
-}
-
-fn encode_disp_16_and_none(
-    _instruction: &ast::Instruction,
-    _data: &InstructionData,
-) -> Result<Vec<u8>, EncodeError> {
-    todo!()
-}
+encoder!(reg16_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg16_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg16_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg16_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg16_and_seg, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg8_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg8_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(reg8_and_reg8, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm16_and_cl, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm16_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm16_and_imm8, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm16_and_one, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm16_and_sbyteword, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm8_and_cl, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm8_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm8_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(rm8_and_one, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(seg_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(seg_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(seg_off_and_none, |_, _| { todo!() }, |_, _| { todo!() });
+encoder!(ss_and_none, |_, _| { todo!() }, |_, _| { todo!() });
 
 fn operand_to_type(operand: &ast::Operand) -> OperandType {
     match operand {
         ast::Operand::Immediate(expr) => {
             if expr.value() < 256 {
-                OperandType::imm_8
+                OperandType::imm8
             } else {
-                OperandType::imm_16
+                OperandType::imm16
             }
         }
         ast::Operand::Address(_, _, _) => todo!(),
         ast::Operand::Register(register) => match register {
             ast::Register::Byte(byte_register) => match byte_register {
                 ast::ByteRegister::AL => OperandType::al,
-                _ => OperandType::reg_8,
+                _ => OperandType::reg8,
             },
             ast::Register::Word(word_register) => match word_register {
                 ast::WordRegister::AX => OperandType::ax,
-                _ => OperandType::reg_16,
+                _ => OperandType::reg16,
             },
         },
         ast::Operand::Segment(_) => todo!(),
@@ -167,14 +207,14 @@ fn coerce_operand_types(
 ) -> (OperandType, OperandType) {
     use OperandType::*;
 
-    if matches!(destination, imm_16 | ax | reg_16 | reg_mem_16 if source == imm_8) {
-        return (destination, imm_16);
+    if matches!(destination, imm16 | ax | reg16 | mem16 if source == imm8) {
+        return (destination, imm16);
     }
 
     (destination, source)
 }
 
-fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static InstructionData> {
+fn find_instruction_data_for(instruction: &Instruction) -> Option<&'static InstructionData> {
     let (destination, source) = match &instruction.operands {
         ast::Operands::None(_) => (OperandType::none, OperandType::none),
         ast::Operands::Destination(_, destination) => {
@@ -201,7 +241,7 @@ fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static 
     None
 }
 
-pub fn size_in_bytes<'a>(instruction: &ast::Instruction<'a>) -> Result<u32, EncodeError> {
+pub fn size_in_bytes<'a>(instruction: &Instruction<'a>) -> Result<u32, EncodeError> {
     let data = match find_instruction_data_for(instruction) {
         Some(data) => data,
         None => {
@@ -212,13 +252,13 @@ pub fn size_in_bytes<'a>(instruction: &ast::Instruction<'a>) -> Result<u32, Enco
 
     Ok(match (&data.destination, &data.source) {
         (OperandType::none, OperandType::none) => 1,
-        (OperandType::al, OperandType::imm_8) => 2,
-        (OperandType::ax, OperandType::imm_16) => 3,
+        (OperandType::al, OperandType::imm8) => 2,
+        (OperandType::ax, OperandType::imm16) => 3,
         _ => todo!("{:?}, {:?}", &data.destination, &data.source),
     })
 }
 
-pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeError> {
+pub fn encode<'a>(instruction: &Instruction<'a>) -> Result<Vec<u8>, EncodeError> {
     let data = match find_instruction_data_for(instruction) {
         Some(data) => data,
         None => {
@@ -260,14 +300,14 @@ mod tests {
         );
 
         assert_eq!(
-            OperandType::al,
+            OperandType::reg_al,
             operand_to_type(&ast::Operand::Register(ast::Register::Byte(
                 ast::ByteRegister::AL
             )))
         );
 
         assert_eq!(
-            OperandType::ax,
+            OperandType::reg_ax,
             operand_to_type(&ast::Operand::Register(ast::Register::Word(
                 ast::WordRegister::AX
             )))
