@@ -391,12 +391,18 @@ impl<'a> Parser<'a> {
     ) -> Result<ast::Expression<'a>, ParserError> {
         let mut left = match &self.token {
             Token::Punctuation(_, PunctuationKind::OpenParenthesis) => {
+                self.next_token();
+
                 let left = self.parse_expression_with_binding_power(0)?;
 
-                if let Token::Punctuation(_, PunctuationKind::CloseBracket) = self.token {
+                if let Token::Punctuation(_, PunctuationKind::CloseParenthesis) = self.token {
+                    self.next_token();
+
                     left
                 } else {
-                    return Err(self.expected("closing parenthesis".to_owned()));
+                    return Err(
+                        self.expected(format!("closing parenthesis, found {:?}", self.token))
+                    );
                 }
             }
 
