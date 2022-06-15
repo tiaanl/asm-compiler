@@ -62,6 +62,7 @@ fn main() {
                     eprintln!("Error: {}", err);
                     print_source_pos(source, &(pos..pos + 2), Some(args.source.as_str()));
                 }
+                _ => panic!("another error"),
             }
 
             return;

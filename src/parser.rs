@@ -1,11 +1,11 @@
 use crate::ast;
-use crate::ast::Operator;
 use crate::encoder::{str_to_operation, Operation};
 use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
 
 #[derive(Debug)]
 pub enum ParserError {
     Expected(usize, String),
+    InvalidPrefixOperator,
 }
 
 pub fn parse(source: &str) -> Result<Vec<ast::Line>, ParserError> {
@@ -241,72 +241,8 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_expression(&mut self) -> Result<Box<ast::Expression<'a>>, ParserError> {
-        let mut left = Box::new(ast::Expression::Term(self.parse_value()?));
-
-        macro_rules! op {
-            ($operator:ident) => {{
-                // Consume the operator.
-                self.next_token();
-
-                let right = self.parse_expression()?;
-                left = Box::new(ast::Expression::InfixOperator(
-                    Operator::$operator,
-                    left,
-                    right,
-                ));
-            }};
-        }
-
-        loop {
-            match self.token {
-                Token::Punctuation(_, PunctuationKind::Plus) => op!(Add),
-                Token::Punctuation(_, PunctuationKind::Minus) => op!(Subtract),
-                Token::Punctuation(_, PunctuationKind::Star) => op!(Multiply),
-                Token::Punctuation(_, PunctuationKind::ForwardSlash) => op!(Divide),
-
-                _ => return Ok(left),
-            }
-        }
-    }
-
-    fn parse_value(&mut self) -> Result<ast::Value<'a>, ParserError> {
-        match self.token {
-            Token::Literal(_, LiteralKind::Number(value)) => {
-                self.next_token();
-                Ok(ast::Value::Constant(value))
-            }
-
-            Token::Literal(ref span, LiteralKind::String(terminated)) => {
-                let literal = self.lexer.source_at(span);
-                if !terminated {
-                    Err(self.expected("Unterminated string literal".to_owned()))
-                } else if literal.len() != 1 {
-                    Err(self.expected("Only character literals allowed.".to_owned()))
-                } else {
-                    // Consume the literal.
-                    self.next_token();
-
-                    let value = literal.chars().next().unwrap() as i32;
-
-                    Ok(ast::Value::Constant(value))
-                }
-            }
-
-            Token::Identifier(ref span) => {
-                let identifier = self.lexer.source_at(span);
-
-                self.next_token();
-
-                if let Some(register) = ast::Register::from_str(identifier) {
-                    Ok(ast::Value::Register(register))
-                } else {
-                    Ok(ast::Value::Label(identifier))
-                }
-            }
-
-            _ => Err(self.expected("Constant, label or register expected.".to_owned())),
-        }
+    fn parse_expression(&mut self) -> Result<ast::Expression<'a>, ParserError> {
+        self.parse_expression_with_binding_power(0)
     }
 
     fn parse_memory_operand(
@@ -418,6 +354,134 @@ impl<'a> Parser<'a> {
     }
 }
 
+/// Utility functions for tokens.
+impl Token {
+    fn operator(&self) -> Option<ast::Operator> {
+        Some(match self {
+            Token::Punctuation(_, punctuation) => match punctuation {
+                PunctuationKind::Plus => ast::Operator::Add,
+                PunctuationKind::Minus => ast::Operator::Subtract,
+                PunctuationKind::Star => ast::Operator::Multiply,
+                PunctuationKind::ForwardSlash => ast::Operator::Divide,
+                _ => return None,
+            },
+            _ => return None,
+        })
+    }
+}
+
+impl<'a> Parser<'a> {
+    fn prefix_binding_power(operator: ast::Operator) -> Result<((), u8), ParserError> {
+        Ok(match operator {
+            ast::Operator::Add | ast::Operator::Subtract => ((), 5),
+            _ => return Err(ParserError::InvalidPrefixOperator),
+        })
+    }
+
+    fn infix_binding_power(operator: ast::Operator) -> (u8, u8) {
+        match operator {
+            ast::Operator::Add | ast::Operator::Subtract => (1, 2),
+            ast::Operator::Multiply | ast::Operator::Divide => (3, 4),
+        }
+    }
+
+    fn parse_expression_with_binding_power(
+        &mut self,
+        binding_power: u8,
+    ) -> Result<ast::Expression<'a>, ParserError> {
+        let mut left = match &self.token {
+            Token::Punctuation(_, PunctuationKind::OpenParenthesis) => {
+                let left = self.parse_expression_with_binding_power(0)?;
+
+                if let Token::Punctuation(_, PunctuationKind::CloseBracket) = self.token {
+                    left
+                } else {
+                    return Err(self.expected("closing parenthesis".to_owned()));
+                }
+            }
+
+            _ => {
+                if let Some(operator) = self.token.operator() {
+                    let ((), right_binding_power) = Self::prefix_binding_power(operator)?;
+                    let right = self.parse_expression_with_binding_power(right_binding_power)?;
+                    ast::Expression::PrefixOperator(operator, Box::new(right))
+                } else {
+                    ast::Expression::Term(self.parse_atom()?)
+                }
+            }
+        };
+
+        loop {
+            let operator = match self.token {
+                Token::NewLine(_) | Token::EndOfFile(_) => break,
+
+                _ => {
+                    if let Some(operator) = self.token.operator() {
+                        operator
+                    } else {
+                        return Err(
+                            self.expected(format!("Operator expected, found {:?}", self.token))
+                        );
+                    }
+                }
+            };
+
+            let (left_binding_power, right_binding_power) = Parser::infix_binding_power(operator);
+
+            if left_binding_power < binding_power {
+                break;
+            }
+
+            self.next_token();
+
+            let right = self.parse_expression_with_binding_power(right_binding_power)?;
+
+            left = ast::Expression::InfixOperator(operator, Box::new(left), Box::new(right));
+        }
+
+        Ok(left)
+    }
+
+    fn parse_atom(&mut self) -> Result<ast::Value<'a>, ParserError> {
+        match self.token {
+            Token::Literal(_, LiteralKind::Number(value)) => {
+                self.next_token();
+                Ok(ast::Value::Constant(value))
+            }
+
+            Token::Literal(ref span, LiteralKind::String(terminated)) => {
+                let literal = self.lexer.source_at(span);
+                if !terminated {
+                    Err(self.expected("Unterminated string literal".to_owned()))
+                } else if literal.len() != 1 {
+                    Err(self.expected("Only character literals allowed.".to_owned()))
+                } else {
+                    // Consume the literal.
+                    self.next_token();
+
+                    let value = literal.chars().next().unwrap() as i32;
+
+                    Ok(ast::Value::Constant(value))
+                }
+            }
+
+            Token::Identifier(ref span) => {
+                let identifier = self.lexer.source_at(span);
+
+                self.next_token();
+
+                if let Some(register) = ast::Register::from_str(identifier) {
+                    Ok(ast::Value::Register(register))
+                } else {
+                    Ok(ast::Value::Label(identifier))
+                }
+            }
+
+            _ => Err(self.expected("Constant, label or register expected.".to_owned())),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -476,7 +540,7 @@ mod tests {
             lines,
             vec![
                 ast::Line::Label(0..5, "label"),
-                ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(42))))
+                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(42)))
             ]
         );
 
@@ -486,9 +550,9 @@ mod tests {
             lines,
             vec![
                 ast::Line::Label(0..5, "first"),
-                ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(10)))),
+                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(10))),
                 ast::Line::Label(28..34, "second"),
-                ast::Line::Constant(Box::new(ast::Expression::Term(ast::Value::Constant(20)))),
+                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(20))),
             ]
         );
     }
@@ -496,6 +560,22 @@ mod tests {
     #[test]
     fn expressions() {
         let mut parser = Parser::new("2 + 3 * 4 + 5");
-        println!("{}", parser.parse_expression().unwrap());
+        let expr = parser.parse_expression().unwrap();
+        assert_eq!(
+            expr,
+            ast::Expression::InfixOperator(
+                ast::Operator::Add,
+                Box::new(ast::Expression::InfixOperator(
+                    ast::Operator::Add,
+                    Box::new(ast::Expression::Term(ast::Value::Constant(2))),
+                    Box::new(ast::Expression::InfixOperator(
+                        ast::Operator::Multiply,
+                        Box::new(ast::Expression::Term(ast::Value::Constant(3))),
+                        Box::new(ast::Expression::Term(ast::Value::Constant(4))),
+                    )),
+                )),
+                Box::new(ast::Expression::Term(ast::Value::Constant(5))),
+            )
+        );
     }
 }

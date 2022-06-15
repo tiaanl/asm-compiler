@@ -192,7 +192,7 @@ impl<'a> std::fmt::Display for Value<'a> {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Operator {
     Add,
     Subtract,
@@ -213,6 +213,7 @@ impl std::fmt::Display for Operator {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expression<'a> {
+    PrefixOperator(Operator, Box<Expression<'a>>),
     InfixOperator(Operator, Box<Expression<'a>>, Box<Expression<'a>>),
 
     Term(Value<'a>),
@@ -231,6 +232,9 @@ impl<'a> Expression<'a> {
 impl<'a> std::fmt::Display for Expression<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
+            Expression::PrefixOperator(operator, right) => {
+                write!(f, "{} ( {} )", operator, right)
+            }
             Expression::InfixOperator(operator, left, right) => {
                 write!(f, "( {} {} {} )", left, operator, right)
             }
@@ -241,8 +245,8 @@ impl<'a> std::fmt::Display for Expression<'a> {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operand<'a> {
-    Immediate(Box<Expression<'a>>),
-    Address(Option<DataSize>, Box<Expression<'a>>, Option<Segment>),
+    Immediate(Expression<'a>),
+    Address(Option<DataSize>, Expression<'a>, Option<Segment>),
     Register(Register),
     Segment(Segment),
 }
@@ -325,8 +329,8 @@ pub enum Line<'a> {
     Label(Span, &'a str),
     Instruction(Span, Instruction<'a>),
     Data(Vec<u8>),
-    Constant(Box<Expression<'a>>),
-    Times(Box<Expression<'a>>),
+    Constant(Expression<'a>),
+    Times(Expression<'a>),
 }
 
 impl<'a> std::fmt::Display for Line<'a> {

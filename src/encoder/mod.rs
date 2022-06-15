@@ -287,16 +287,16 @@ mod tests {
     fn operand_types() {
         assert_eq!(
             OperandType::imm8,
-            operand_to_type(&ast::Operand::Immediate(Box::new(ast::Expression::Term(
+            operand_to_type(&ast::Operand::Immediate(ast::Expression::Term(
                 ast::Value::Constant(10)
-            ))))
+            )))
         );
 
         assert_eq!(
             OperandType::imm16,
-            operand_to_type(&ast::Operand::Immediate(Box::new(ast::Expression::Term(
+            operand_to_type(&ast::Operand::Immediate(ast::Expression::Term(
                 ast::Value::Constant(256)
-            ))))
+            )))
         );
 
         assert_eq!(
