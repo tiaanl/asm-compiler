@@ -419,9 +419,10 @@ impl<'a> Parser<'a> {
                     if let Some(operator) = self.token.operator() {
                         operator
                     } else {
-                        return Err(
-                            self.expected(format!("Operator expected, found {:?}", self.token))
-                        );
+                        break;
+                        //return Err(
+                        //    self.expected(format!("Operator expected, found {:?}", self.token))
+                        //);
                     }
                 }
             };

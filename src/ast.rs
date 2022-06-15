@@ -185,8 +185,8 @@ pub enum Value<'a> {
 impl<'a> std::fmt::Display for Value<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Value::Constant(value) => write!(f, "const({})", *value),
-            Value::Label(label) => write!(f, "label({})", *label),
+            Value::Constant(value) => write!(f, "{}", *value),
+            Value::Label(label) => write!(f, "{}", *label),
             Value::Register(register) => write!(f, "reg({})", *register),
         }
     }
@@ -233,10 +233,10 @@ impl<'a> std::fmt::Display for Expression<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::PrefixOperator(operator, right) => {
-                write!(f, "{} ( {} )", operator, right)
+                write!(f, "{}({})", operator, right)
             }
             Expression::InfixOperator(operator, left, right) => {
-                write!(f, "( {} {} {} )", left, operator, right)
+                write!(f, "({} {} {})", left, operator, right)
             }
             Expression::Term(value) => write!(f, "{}", value),
         }
