@@ -6,6 +6,26 @@ use ast::Instruction;
 
 pub use instructions::{str_to_operation, Operation};
 
+#[allow(non_camel_case_types)]
+#[derive(Debug)]
+pub enum Code {
+    ib,
+    ibs,
+    iw,
+    iwd,
+    seg,
+    rel,
+    repe,
+    rel8,
+    jmp8,
+    wait,
+
+    byte(u8),
+    plus_reg(u8),
+    mrm,
+    encoding(u8),
+}
+
 #[derive(Debug)]
 pub enum EncodeError {
     InvalidOperands(Span),
@@ -78,104 +98,68 @@ pub struct InstructionData {
     pub source: OperandType,
     pub encoder: Encoder,
     pub sizer: Sizer,
+    pub codes: &'static [Code],
 }
 
-trait EncoderTrait {
-    fn encode(instruction: &Instruction, data: &InstructionData) -> Result<Vec<u8>, EncodeError>;
+pub mod funcs {
+    use super::*;
 
-    fn size(instruction: &Instruction, data: &InstructionData) -> Result<u32, EncodeError>;
-}
+    pub trait EncoderTrait {
+        fn encode(
+            instruction: &Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError>;
 
-macro_rules! encoder {
-    ($name:ident, $encode:expr, $size:expr) => {
-        #[allow(non_camel_case_types)]
-        pub struct $name;
+        fn size(instruction: &Instruction, data: &InstructionData) -> Result<u32, EncodeError>;
+    }
 
-        impl EncoderTrait for $name {
-            #[inline]
-            fn encode(
-                instruction: &Instruction,
-                data: &InstructionData,
-            ) -> Result<Vec<u8>, EncodeError> {
-                $encode(instruction, data)
+    macro_rules! encoder {
+        ($name:ident, $encode:expr, $size:expr) => {
+            #[allow(non_camel_case_types)]
+            pub struct $name;
+
+            impl EncoderTrait for $name {
+                #[inline]
+                fn encode(
+                    instruction: &Instruction,
+                    data: &InstructionData,
+                ) -> Result<Vec<u8>, EncodeError> {
+                    $encode(instruction, data)
+                }
+
+                #[inline]
+                fn size(
+                    instruction: &Instruction,
+                    data: &InstructionData,
+                ) -> Result<u32, EncodeError> {
+                    $size(instruction, data)
+                }
             }
+        };
+    }
 
-            #[inline]
-            fn size(instruction: &Instruction, data: &InstructionData) -> Result<u32, EncodeError> {
-                $size(instruction, data)
-            }
-        }
-    };
+    // fn encode(
+    //     _instruction: &Instruction,
+    //     _data: &InstructionData,
+    // ) -> Result<Vec<u8>, EncodeError> $encode
+    //
+    // fn size(
+    //     _instruction: &Instruction,
+    //     _data: &InstructionData,
+    // ) -> Result<u32, EncodeError> $size
+
+    encoder!(bytes_only, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(immediate, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(memory_and_register, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(register_and_memory, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(memory_immediate, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(immediate_source, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(jump_immediate, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(memory, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(register, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(register_immediate, |_, _| { todo!() }, |_, _| { todo!() });
+    encoder!(register_source, |_, _| { todo!() }, |_, _| { todo!() });
 }
-
-// fn encode(
-//     _instruction: &Instruction,
-//     _data: &InstructionData,
-// ) -> Result<Vec<u8>, EncodeError> $encode
-//
-// fn size(
-//     _instruction: &Instruction,
-//     _data: &InstructionData,
-// ) -> Result<u32, EncodeError> $size
-
-encoder!(al_and_dx, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(al_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(al_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ax_and_dx, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ax_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ax_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ax_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ax_and_sbyteword, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(cs_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ds_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(dx_and_al, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(dx_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(es_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(imm16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(imm_and_al, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(imm_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(imm_and_cx, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(imm_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_al, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_imm16, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_imm8, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_reg8, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_sbyteword16, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(mem_and_seg, |_, _| { todo!() }, |_, _| { todo!() });
-
-encoder!(
-    none_and_none,
-    |_, d: &InstructionData| { Ok(vec![d.op_code]) },
-    |_, _| { Ok(1) }
-);
-
-encoder!(reg16_and_ax, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg16_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg16_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg16_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg16_and_seg, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg8_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg8_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(reg8_and_reg8, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm16_and_cl, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm16_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm16_and_imm8, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm16_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm16_and_one, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm16_and_sbyteword, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm8_and_cl, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm8_and_imm, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm8_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(rm8_and_one, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(seg_and_mem, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(seg_and_reg16, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(seg_off_and_none, |_, _| { todo!() }, |_, _| { todo!() });
-encoder!(ss_and_none, |_, _| { todo!() }, |_, _| { todo!() });
 
 fn operand_to_type(operand: &ast::Operand) -> OperandType {
     match operand {

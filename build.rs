@@ -1,12 +1,25 @@
 #![allow(dead_code)]
 
 use inflector::Inflector;
-use nom::IResult;
-use serde::de::Error;
-use serde::{Deserialize, Deserializer};
-use std::collections::HashSet;
-use std::fs::File;
-use std::io::Write;
+use nom::{
+    branch::alt,
+    bytes::complete::tag,
+    character::complete::{alphanumeric1, digit1, space0, space1},
+    combinator::{map, opt},
+    error::{ErrorKind, ParseError},
+    multi::separated_list1,
+    sequence::{delimited, preceded, terminated, tuple},
+    AsChar, IResult, InputTakeAtPosition,
+};
+use serde::{de::Error, Deserialize, Deserializer};
+use std::fmt::{Display, Formatter};
+use std::{collections::HashSet, fs::File, io::Write};
+
+#[derive(Debug, Deserialize)]
+struct Encoder {
+    name: String,
+    codes: Vec<Code>,
+}
 
 #[derive(Debug, Deserialize)]
 struct Record {
@@ -15,7 +28,7 @@ struct Record {
     destination: String,
     source: String,
     #[serde(deserialize_with = "do_code")]
-    encoder: Code,
+    encoder: Encoder,
 }
 
 fn operand_to_type(operand: &str) -> String {
@@ -26,56 +39,180 @@ fn operand_to_type(operand: &str) -> String {
     }
 }
 
-#[derive(Debug)]
+#[allow(non_camel_case_types)]
+#[derive(Debug, Deserialize)]
 enum Code {
-    Unknown,
+    ib,
+    ibs,
+    iw,
+    iwd,
+    seg,
+    rel,
+    repe,
+    rel8,
+    jmp8,
+    wait,
+
+    byte(u8),
+    plus_reg(u8),
+    mrm,
+    encoding(u8),
 }
 
-fn parse_record(input: &str) -> IResult<&str, Code> {
-    Ok((input, Code::Unknown))
+impl Display for Code {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Code::ib => write!(f, "Code::ib"),
+            Code::ibs => write!(f, "Code::ibs"),
+            Code::iw => write!(f, "Code::iw"),
+            Code::iwd => write!(f, "Code::iwd"),
+            Code::seg => write!(f, "Code::seg"),
+            Code::rel => write!(f, "Code::rel"),
+            Code::repe => write!(f, "Code::repe"),
+            Code::rel8 => write!(f, "Code::rel8"),
+            Code::jmp8 => write!(f, "Code::jmp8"),
+            Code::wait => write!(f, "Code::wait"),
+            Code::byte(byte) => write!(f, "Code::byte({:#04x})", byte),
+            Code::plus_reg(byte) => write!(f, "Code::plus_reg({:#04x})", byte),
+            Code::mrm => write!(f, "Code::mrm"),
+            Code::encoding(byte) => write!(f, "Code::encoding({:#04x})", byte),
+        }
+    }
 }
 
-fn do_code<'de, D>(deserializer: D) -> Result<Code, D::Error>
+fn str_to_code(s: &str) -> Option<Code> {
+    Some(match s {
+        "ib" => Code::ib,
+        "ibs" => Code::ibs,
+        "iw" => Code::iw,
+        "iwd" => Code::iwd,
+        "rel" => Code::rel,
+        "seg" => Code::seg,
+        "repe" => Code::repe,
+        "rel8" => Code::rel8,
+        "jmp8" => Code::jmp8,
+        "wait" => Code::wait,
+        _ => return None,
+    })
+}
+
+fn encoder_name<T, E: ParseError<T>>(input: T) -> IResult<T, T, E>
+where
+    T: InputTakeAtPosition,
+    <T as InputTakeAtPosition>::Item: AsChar,
+{
+    input.split_at_position1_complete(|item| item.as_char() == ':', ErrorKind::AlphaNumeric)
+}
+
+fn parse_code(input: &str) -> IResult<&str, Code> {
+    alt((
+        map(terminated(alphanumeric1, tag("+r")), |s| {
+            Code::plus_reg(u8::from_str_radix(s, 16).unwrap())
+        }),
+        map(tag("/r"), |_| Code::mrm),
+        map(preceded(tag("/"), digit1), |s| {
+            Code::encoding(u8::from_str_radix(s, 16).unwrap())
+        }),
+        map(alphanumeric1, |s| {
+            if let Some(code) = str_to_code(s) {
+                code
+            } else {
+                Code::byte(u8::from_str_radix(s, 16).unwrap())
+            }
+        }),
+    ))(input)
+}
+
+fn parse_encoder(input: &str) -> IResult<&str, &str> {
+    terminated(
+        encoder_name, //
+        tag(":"),     //
+    )(input)
+}
+
+fn str_to_encoder_name(s: &str) -> Option<&str> {
+    Some(match s {
+        "i" => "immediate",
+        "-i" => "immediate_source",
+        "-r" => "register_source",
+        "r" => "register",
+        "ri" => "register_immediate",
+        "m" => "memory",
+        "mi" => "memory_immediate",
+        "mr" => "memory_and_register",
+        "rm" => "register_and_memory",
+        "ji" => "jump_immediate",
+        _ => return None,
+    })
+}
+
+fn parse_record(input: &str) -> IResult<&str, (&str, Vec<Code>)> {
+    delimited(
+        tag("["),
+        tuple((
+            map(opt(terminated(parse_encoder, space0)), |name| {
+                if let Some(name) = name {
+                    if let Some(encoder_name) = str_to_encoder_name(name) {
+                        encoder_name
+                    } else {
+                        panic!("invalid_code")
+                    }
+                } else {
+                    "bytes_only"
+                }
+            }),
+            separated_list1(space1, parse_code),
+        )),
+        tag("]"),
+    )(input)
+}
+
+fn do_code<'de, D>(deserializer: D) -> Result<Encoder, D::Error>
 where
     D: Deserializer<'de>,
 {
     let s: &str = serde::de::Deserialize::deserialize(deserializer)?;
 
     match parse_record(s) {
-        Ok((_, code)) => Ok(code),
-        Err(_) => Err(D::Error::custom("test")),
+        Ok((_, (encoder, codes))) => Ok(Encoder {
+            name: encoder.to_owned(),
+            codes,
+        }),
+        Err(_) => Err(D::Error::custom(s)),
     }
 }
 
 fn write_record(out: &mut File, record: &Record) {
-    let encoder = format!(
-        "{}_and_{}",
-        operand_to_type(record.destination.as_str()),
-        operand_to_type(record.source.as_str())
-    );
-
     let line = format!(
-        "    id!({}, {}, {}, {}, {}),\n",
+        "    id!({}, {}, {}, {}, {}, &[{}]),\n",
         record.mnemonic.to_title_case(),
         record.op_code,
         operand_to_type(record.destination.as_str()),
         operand_to_type(record.source.as_str()),
-        encoder,
+        record.encoder.name,
+        record
+            .encoder
+            .codes
+            .iter()
+            .map(|c| format!("{}", c))
+            .collect::<Vec<String>>()
+            .join(", "),
     );
     out.write_all(line.as_bytes()).unwrap();
 }
 
-const HEADER: &str = "use super::{EncoderTrait, InstructionData, OperandType};
+const HEADER: &str = "use super::{Code, funcs::EncoderTrait, InstructionData, OperandType};
 
 macro_rules! id {
-    ($operation:ident, $op_code:literal, $destination:ident, $source:ident, $encoder:ident) => {{
+    ($operation:ident, $op_code:literal, $destination:ident, $source:ident, $encoder:ident, $codes:expr) => {{
         InstructionData {
             operation: Operation::$operation,
             op_code: $op_code,
             destination: OperandType::$destination,
             source: OperandType::$source,
-            encoder: super::$encoder::encode,
-            sizer: super::$encoder::size,
+            encoder: super::funcs::$encoder::encode,
+            sizer: super::funcs::$encoder::size,
+            codes: $codes,
         }
     }};
 }
@@ -83,6 +220,8 @@ macro_rules! id {
 ";
 
 fn main() {
+    println!("cargo:rerun-if-changed=instructions.csv");
+
     let mut rdr = csv::Reader::from_path("instructions.csv").unwrap();
 
     let records: Vec<Record> = rdr
