@@ -59,14 +59,14 @@ pub enum OperandType {
     seg,
 
     mem,
-    mem8,
+    _mem8,
     mem16,
 
     rm8,
     rm16,
 
-    disp8,
-    disp16,
+    _disp8,
+    _disp16,
 
     seg_off,
 }

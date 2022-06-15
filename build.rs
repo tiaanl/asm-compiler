@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use inflector::Inflector;
 use nom::IResult;
 use serde::de::Error;
@@ -90,6 +92,8 @@ fn main() {
         .collect();
 
     let mnemonics: HashSet<String> = records.iter().map(|r| r.mnemonic.clone()).collect();
+    let mut mnemonics = mnemonics.into_iter().collect::<Vec<String>>();
+    mnemonics.sort();
 
     let mut out = File::create("src/encoder/instructions.rs").unwrap();
 
@@ -110,7 +114,7 @@ fn main() {
             .unwrap()
     });
     out.write_all(
-        "}\n\npub fn str_to_operation(s: &str) -> Option<Operation> {\n    Some(match s {\n"
+        "}\n\npub fn str_to_operation(s: &str) -> Option<Operation> {\n    Some(match s.to_lowercase().as_str() {\n"
             .as_bytes(),
     )
     .unwrap();

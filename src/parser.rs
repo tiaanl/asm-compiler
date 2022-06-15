@@ -49,43 +49,33 @@ impl<'a> Parser<'a> {
                 Token::Identifier(ref span) => {
                     let identifier = self.lexer.source_at(span);
                     if let Some(operation) = str_to_operation(identifier) {
-                        let start = self.token.span().start;
-                        self.next_token();
                         let instruction = self.parse_instruction(operation)?;
-                        let end = self.token.span().end;
-                        self.lines
-                            .push(ast::Line::Instruction(start..end, instruction));
-                        continue;
+                        self.lines.push(instruction);
                     } else {
                         match identifier.to_lowercase().as_str() {
                             "equ" => {
                                 let line = self.parse_equ()?;
                                 self.lines.push(line);
-                                continue;
                             }
 
                             "db" => {
                                 let line = self.parse_data::<u8>()?;
                                 self.lines.push(line);
-                                continue;
                             }
 
                             "dw" => {
                                 let line = self.parse_data::<u16>()?;
                                 self.lines.push(line);
-                                continue;
                             }
 
                             "dd" => {
                                 let line = self.parse_data::<u32>()?;
                                 self.lines.push(line);
-                                continue;
                             }
 
                             "times" => {
                                 let line = self.parse_times()?;
                                 self.lines.push(line);
-                                continue;
                             }
 
                             _ => {
@@ -93,7 +83,6 @@ impl<'a> Parser<'a> {
                                 // label.
                                 let line = self.parse_label(identifier)?;
                                 self.lines.push(line);
-                                continue;
                             }
                         }
                     }
@@ -167,26 +156,29 @@ impl<'a> Parser<'a> {
         Ok(ast::Line::Label(start..end, name))
     }
 
-    fn parse_instruction(
-        &mut self,
-        operation: Operation,
-    ) -> Result<ast::Instruction<'a>, ParserError> {
+    fn parse_instruction(&mut self, operation: Operation) -> Result<ast::Line<'a>, ParserError> {
+        let start = self.token.span().start;
+
+        // Consume the operation.
+        self.next_token();
+
         let operands = self.parse_operands()?;
+
+        let end = self.token.span().end;
 
         self.require_new_line()?;
 
-        Ok(ast::Instruction {
-            operation,
-            operands,
-        })
+        Ok(ast::Line::Instruction(
+            start..end,
+            ast::Instruction {
+                operation,
+                operands,
+            },
+        ))
     }
 
     fn parse_operands(&mut self) -> Result<ast::Operands<'a>, ParserError> {
         let start = self.token.span().start;
-
-        if matches!(self.token, Token::Comment(_)) {
-            self.next_token();
-        }
 
         if matches!(self.token, Token::NewLine(_) | Token::EndOfFile(_)) {
             Ok(ast::Operands::None(start..self.token.span().end))
