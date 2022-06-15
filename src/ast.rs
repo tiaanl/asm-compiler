@@ -193,12 +193,27 @@ impl<'a> std::fmt::Display for Value<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum Operator {
+    Add,
+    Subtract,
+    Multiply,
+    Divide,
+}
+
+impl std::fmt::Display for Operator {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Operator::Add => write!(f, "+"),
+            Operator::Subtract => write!(f, "-"),
+            Operator::Multiply => write!(f, "*"),
+            Operator::Divide => write!(f, "/"),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Expression<'a> {
-    // Infix operators:
-    Add(Box<Expression<'a>>, Box<Expression<'a>>),
-    Subtract(Box<Expression<'a>>, Box<Expression<'a>>),
-    Multiply(Box<Expression<'a>>, Box<Expression<'a>>),
-    Divide(Box<Expression<'a>>, Box<Expression<'a>>),
+    InfixOperator(Operator, Box<Expression<'a>>, Box<Expression<'a>>),
 
     Term(Value<'a>),
 }
@@ -216,10 +231,9 @@ impl<'a> Expression<'a> {
 impl<'a> std::fmt::Display for Expression<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Expression::Add(left, right) => write!(f, "{} + {}", left, right),
-            Expression::Subtract(left, right) => write!(f, "{} - {}", left, right),
-            Expression::Multiply(left, right) => write!(f, "{} * {}", left, right),
-            Expression::Divide(left, right) => write!(f, "{} / {}", left, right),
+            Expression::InfixOperator(operator, left, right) => {
+                write!(f, "( {} {} {} )", left, operator, right)
+            }
             Expression::Term(value) => write!(f, "{}", value),
         }
     }

@@ -1,4 +1,5 @@
 use crate::ast;
+use crate::ast::Operator;
 use crate::encoder::{str_to_operation, Operation};
 use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
 
@@ -249,7 +250,11 @@ impl<'a> Parser<'a> {
                 self.next_token();
 
                 let right = self.parse_expression()?;
-                left = Box::new(ast::Expression::$operator(left, right));
+                left = Box::new(ast::Expression::InfixOperator(
+                    Operator::$operator,
+                    left,
+                    right,
+                ));
             }};
         }
 

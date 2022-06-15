@@ -286,42 +286,42 @@ mod tests {
     #[test]
     fn operand_types() {
         assert_eq!(
-            OperandType::imm_8,
+            OperandType::imm8,
             operand_to_type(&ast::Operand::Immediate(Box::new(ast::Expression::Term(
                 ast::Value::Constant(10)
             ))))
         );
 
         assert_eq!(
-            OperandType::imm_16,
+            OperandType::imm16,
             operand_to_type(&ast::Operand::Immediate(Box::new(ast::Expression::Term(
                 ast::Value::Constant(256)
             ))))
         );
 
         assert_eq!(
-            OperandType::reg_al,
+            OperandType::al,
             operand_to_type(&ast::Operand::Register(ast::Register::Byte(
                 ast::ByteRegister::AL
             )))
         );
 
         assert_eq!(
-            OperandType::reg_ax,
+            OperandType::ax,
             operand_to_type(&ast::Operand::Register(ast::Register::Word(
                 ast::WordRegister::AX
             )))
         );
 
         assert_eq!(
-            OperandType::reg_8,
+            OperandType::reg8,
             operand_to_type(&ast::Operand::Register(ast::Register::Byte(
                 ast::ByteRegister::DL
             )))
         );
 
         assert_eq!(
-            OperandType::reg_16,
+            OperandType::reg16,
             operand_to_type(&ast::Operand::Register(ast::Register::Word(
                 ast::WordRegister::DX
             )))
