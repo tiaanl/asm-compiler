@@ -1,9 +1,7 @@
-mod instructions;
-
 use crate::ast;
 use crate::ast::Operands;
+use crate::instructions::Operation;
 use crate::lexer::Span;
-pub use instructions::{str_to_operation, Operation};
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
@@ -28,15 +26,12 @@ pub enum Code {
 #[derive(Debug)]
 pub enum EncodeError {
     InvalidOperands(Span),
-
-    Unknown(Span),
 }
 
 impl EncodeError {
     pub fn span(&self) -> &Span {
         match self {
             EncodeError::InvalidOperands(span) => span,
-            EncodeError::Unknown(span) => span,
         }
     }
 }
@@ -48,7 +43,6 @@ impl std::fmt::Display for EncodeError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::InvalidOperands(_) => write!(f, "Invalid operands"),
-            Self::Unknown(_) => write!(f, "Unknown"),
         }
     }
 }
@@ -187,7 +181,7 @@ pub mod funcs {
             for code in data.codes {
                 match code {
                     Code::byte(byte) => output.push(*byte),
-                    Code::encoding(encoding) => match &instruction.operands {
+                    Code::encoding(_encoding) => match &instruction.operands {
                         Operands::DestinationAndSource(
                             _,
                             ast::Operand::Address(_, _, _),
@@ -265,7 +259,7 @@ impl<'a> ast::Operand<'a> {
 }
 
 fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static InstructionData> {
-    for data in instructions::DATA {
+    for data in crate::instructions::DATA {
         if data.operation != instruction.operation {
             continue;
         }

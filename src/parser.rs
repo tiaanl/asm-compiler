@@ -1,5 +1,5 @@
 use crate::ast;
-use crate::encoder::{str_to_operation, Operation};
+use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
 
 #[derive(Debug)]

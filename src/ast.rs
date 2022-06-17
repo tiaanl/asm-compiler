@@ -1,4 +1,4 @@
-use crate::encoder::Operation;
+use crate::instructions::Operation;
 use crate::lexer::Span;
 use std::collections::HashMap;
 use std::fmt::Formatter;
@@ -217,16 +217,6 @@ pub enum Expression<'a> {
     InfixOperator(Operator, Box<Expression<'a>>, Box<Expression<'a>>),
 
     Term(Value<'a>),
-}
-
-impl<'a> Expression<'a> {
-    pub fn value(&self) -> i32 {
-        match self {
-            Expression::Term(Value::Constant(value)) => *value,
-            Expression::Term(Value::Label(_)) => todo!(),
-            _ => todo!(),
-        }
-    }
 }
 
 impl<'a> std::fmt::Display for Expression<'a> {
