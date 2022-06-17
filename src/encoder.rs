@@ -1,5 +1,4 @@
 use crate::ast;
-use crate::ast::Operands;
 use crate::instructions::Operation;
 use crate::lexer::Span;
 
@@ -98,6 +97,62 @@ pub struct InstructionData {
     pub codes: &'static [Code],
 }
 
+#[must_use]
+fn mod_reg_rm(encoding: u8, register: u8, mem: u8) -> u8 {
+    (encoding << 6) | (register << 3) | mem
+}
+
+fn code_common(code: &Code, instruction: &ast::Instruction, output: &mut Vec<u8>) -> bool {
+    match code {
+        Code::byte(byte) => {
+            output.push(*byte);
+            true
+        }
+
+        Code::plus_reg(byte) => match &instruction.operands {
+            ast::Operands::Destination(_, ast::Operand::Register(register)) => {
+                output.push(byte.wrapping_add(register.encoding()));
+                true
+            }
+
+            _ => false,
+        },
+
+        Code::mrm => match &instruction.operands {
+            ast::Operands::DestinationAndSource(
+                _,
+                ast::Operand::Register(reg),
+                ast::Operand::Register(mem),
+            ) => {
+                output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
+                true
+            }
+
+            ast::Operands::DestinationAndSource(
+                _,
+                ast::Operand::Register(reg),
+                ast::Operand::Segment(mem),
+            ) => {
+                output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
+                true
+            }
+
+            ast::Operands::DestinationAndSource(
+                _,
+                ast::Operand::Segment(reg),
+                ast::Operand::Register(mem),
+            ) => {
+                output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
+                true
+            }
+
+            _ => false,
+        },
+
+        _ => false,
+    }
+}
+
 pub mod funcs {
     use super::*;
 
@@ -111,48 +166,14 @@ pub mod funcs {
             -> Result<u32, EncodeError>;
     }
 
-    macro_rules! encoder {
-        ($name:ident, $encode:expr, $size:expr) => {
-            #[allow(non_camel_case_types)]
-            pub struct $name;
-
-            impl EncoderTrait for $name {
-                #[inline]
-                fn encode(
-                    instruction: &ast::Instruction,
-                    data: &InstructionData,
-                ) -> Result<Vec<u8>, EncodeError> {
-                    $encode(instruction, data)
-                }
-
-                #[inline]
-                fn size(
-                    instruction: &ast::Instruction,
-                    data: &InstructionData,
-                ) -> Result<u32, EncodeError> {
-                    $size(instruction, data)
-                }
-            }
-        };
-    }
-
     pub mod bytes_only {
         use super::*;
 
         pub fn encode(
-            _instruction: &ast::Instruction,
+            instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<Vec<u8>, EncodeError> {
-            let mut output = vec![];
-
-            for code in data.codes {
-                match code {
-                    Code::byte(byte) => output.push(*byte),
-                    _ => panic!("invalid code"),
-                }
-            }
-
-            Ok(output)
+            todo!()
         }
 
         pub fn size(
@@ -163,9 +184,113 @@ pub mod funcs {
         }
     }
 
-    encoder!(immediate, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(memory_and_register, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(register_and_memory, |_, _| { todo!() }, |_, _| { todo!() });
+    #[allow(non_camel_case_types)]
+    pub struct immediate;
+    impl EncoderTrait for immediate {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct memory_and_register;
+    impl EncoderTrait for memory_and_register {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| {
+                let mut output = vec![];
+
+                for code in data.codes {
+                    if !code_common(code, instruction, &mut output) {
+                        match code {
+                            Code::mrm => match &instruction.operands {
+                                ast::Operands::DestinationAndSource(
+                                    _,
+                                    ast::Operand::Address(_, _, _),
+                                    ast::Operand::Register(_),
+                                ) => {
+                                    todo!("mem reg")
+                                }
+
+                                _ => unreachable!("{:?}", instruction),
+                            },
+
+                            _ => todo!("{:?}", code),
+                        }
+                    }
+                }
+
+                Ok(output)
+            })(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct register_and_memory;
+    impl EncoderTrait for register_and_memory {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| {
+                let mut output = vec![];
+
+                for code in data.codes {
+                    if !code_common(code, instruction, &mut output) {
+                        match code {
+                            Code::byte(byte) => output.push(*byte),
+                            Code::mrm => match &instruction.operands {
+                                ast::Operands::DestinationAndSource(
+                                    _,
+                                    ast::Operand::Address(_, _, _),
+                                    ast::Operand::Register(_),
+                                ) => {
+                                    todo!("mem reg")
+                                }
+
+                                _ => unreachable!("{:?}", instruction),
+                            },
+                            _ => todo!("{:?}", code),
+                        }
+                    }
+                }
+
+                Ok(output)
+            })(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
 
     pub mod memory_immediate {
         use super::*;
@@ -182,7 +307,7 @@ pub mod funcs {
                 match code {
                     Code::byte(byte) => output.push(*byte),
                     Code::encoding(_encoding) => match &instruction.operands {
-                        Operands::DestinationAndSource(
+                        ast::Operands::DestinationAndSource(
                             _,
                             ast::Operand::Address(_, _, _),
                             ast::Operand::Immediate(_),
@@ -206,12 +331,129 @@ pub mod funcs {
         }
     }
 
-    encoder!(immediate_source, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(jump_immediate, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(memory, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(register, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(register_immediate, |_, _| { todo!() }, |_, _| { todo!() });
-    encoder!(register_source, |_, _| { todo!() }, |_, _| { todo!() });
+    #[allow(non_camel_case_types)]
+    pub struct immediate_source;
+
+    impl EncoderTrait for immediate_source {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!("{:?}", instruction))(
+                instruction,
+                data,
+            )
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct jump_immediate;
+    impl EncoderTrait for jump_immediate {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct memory;
+    impl EncoderTrait for memory {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct register;
+    impl EncoderTrait for register {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct register_immediate;
+    impl EncoderTrait for register_immediate {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
+
+    #[allow(non_camel_case_types)]
+    pub struct register_source;
+    impl EncoderTrait for register_source {
+        #[inline]
+        fn encode(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<Vec<u8>, EncodeError> {
+            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+        }
+
+        #[inline]
+        fn size(
+            instruction: &ast::Instruction,
+            data: &InstructionData,
+        ) -> Result<u32, EncodeError> {
+            (|_, _| todo!())(instruction, data)
+        }
+    }
 }
 
 impl<'a> ast::Operand<'a> {
@@ -265,19 +507,19 @@ fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static 
         }
 
         match &instruction.operands {
-            Operands::None(_) => {
+            ast::Operands::None(_) => {
                 if data.destination == OperandType::none && data.source == OperandType::none {
                     return Some(data);
                 }
             }
-            Operands::Destination(_, destination) => {
+            ast::Operands::Destination(_, destination) => {
                 if data.source == OperandType::none
                     && destination.matches_operand_type(data.destination)
                 {
                     return Some(data);
                 }
             }
-            Operands::DestinationAndSource(_, destination, source) => {
+            ast::Operands::DestinationAndSource(_, destination, source) => {
                 if destination.matches_operand_type(data.destination)
                     && source.matches_operand_type(data.source)
                 {
@@ -303,7 +545,8 @@ pub fn size_in_bytes<'a>(instruction: &ast::Instruction<'a>) -> Result<u32, Enco
         (OperandType::none, OperandType::none) => 1,
         (OperandType::al, OperandType::imm8) => 2,
         (OperandType::ax, OperandType::imm16) => 3,
-        _ => todo!("{:?}, {:?}", &data.destination, &data.source),
+        _ => 0,
+        // _ => todo!("{:?}, {:?}", &data.destination, &data.source),
     })
 }
 

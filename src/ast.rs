@@ -4,16 +4,17 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 
 #[allow(clippy::upper_case_acronyms)]
+#[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ByteRegister {
-    AL,
-    AH,
-    CL,
-    CH,
-    DL,
-    DH,
-    BL,
-    BH,
+    AL = 0,
+    CL = 1,
+    DL = 2,
+    BL = 3,
+    AH = 4,
+    CH = 5,
+    DH = 6,
+    BH = 7,
 }
 
 impl std::fmt::Display for ByteRegister {
@@ -46,19 +47,24 @@ impl ByteRegister {
             _ => return None,
         })
     }
+
+    pub fn encoding(&self) -> u8 {
+        self.clone() as u8
+    }
 }
 
 #[allow(clippy::upper_case_acronyms)]
+#[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum WordRegister {
-    AX,
-    CX,
-    DX,
-    BX,
-    SP,
-    BP,
-    SI,
-    DI,
+    AX = 0,
+    CX = 1,
+    DX = 2,
+    BX = 3,
+    SP = 4,
+    BP = 5,
+    SI = 6,
+    DI = 7,
 }
 
 impl std::fmt::Display for WordRegister {
@@ -91,6 +97,10 @@ impl WordRegister {
             _ => return None,
         })
     }
+
+    pub fn encoding(&self) -> u8 {
+        self.clone() as u8
+    }
 }
 
 #[allow(clippy::upper_case_acronyms)]
@@ -117,23 +127,30 @@ impl Register {
             WordRegister::from_str(s).map(Register::Word)
         }
     }
+
+    pub fn encoding(&self) -> u8 {
+        match self {
+            Register::Byte(r) => r.encoding(),
+            Register::Word(r) => r.encoding(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Segment {
-    CS,
-    DS,
-    ES,
-    SS,
+    ES = 0,
+    CS = 1,
+    SS = 2,
+    DS = 3,
 }
 
 impl std::fmt::Display for Segment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Segment::CS => write!(f, "CS"),
-            Segment::DS => write!(f, "DS"),
             Segment::ES => write!(f, "ES"),
+            Segment::CS => write!(f, "CS"),
             Segment::SS => write!(f, "SS"),
+            Segment::DS => write!(f, "DS"),
         }
     }
 }
@@ -141,12 +158,16 @@ impl std::fmt::Display for Segment {
 impl Segment {
     pub fn from_str(s: &str) -> Option<Self> {
         match s.to_lowercase().as_str() {
-            "cs" => Some(Self::CS),
-            "ds" => Some(Self::DS),
             "es" => Some(Self::ES),
+            "cs" => Some(Self::CS),
             "ss" => Some(Self::SS),
+            "ds" => Some(Self::DS),
             _ => None,
         }
+    }
+
+    pub fn encoding(&self) -> u8 {
+        self.clone() as u8
     }
 }
 
