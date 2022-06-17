@@ -220,6 +220,7 @@ macro_rules! id {
 
 fn main() {
     println!("cargo:rerun-if-changed=instructions.csv");
+    println!("cargo:rerun-if-changed=src/encoder/instructions.rs");
 
     let mut rdr = csv::Reader::from_path("instructions.csv").unwrap();
 
