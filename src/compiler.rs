@@ -51,20 +51,10 @@ impl CompilerError {
     }
 }
 
+#[derive(Default)]
 pub struct CompilerSession<'a> {
-    instructions: Vec<ast::Instruction<'a>>,
-    constants: HashMap<&'a str, ast::Expression<'a>>,
-    labels: HashMap<&'a str, usize>,
-}
-
-impl<'a> CompilerSession<'a> {
-    pub fn new() -> Self {
-        Self {
-            instructions: vec![],
-            constants: HashMap::new(),
-            labels: HashMap::new(),
-        }
-    }
+    pub lines: Vec<ast::Line<'a>>,
+    pub labels: HashMap<&'a str, usize>,
 }
 
 pub struct Compiler<'a> {
@@ -132,12 +122,12 @@ impl<'a> Compiler<'a> {
 
     fn evaluate_instruction(
         &self,
-        instruction: &mut ast::Instruction<'a>,
+        instruction: &mut ast::Instruction,
     ) -> Result<(), CompilerError> {
         self.evaluate_operands(&mut instruction.operands)
     }
 
-    fn evaluate_operands(&self, operands: &mut ast::Operands<'a>) -> Result<(), CompilerError> {
+    fn evaluate_operands(&self, operands: &mut ast::Operands) -> Result<(), CompilerError> {
         match operands {
             ast::Operands::None(_) => Ok(()),
             ast::Operands::Destination(span, destination) => self.evaluate_operand(destination),
@@ -149,7 +139,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn evaluate_operand(&self, operand: &mut ast::Operand<'a>) -> Result<(), CompilerError> {
+    fn evaluate_operand(&self, operand: &mut ast::Operand) -> Result<(), CompilerError> {
         match operand {
             ast::Operand::Immediate(expr) => self.evaluate_expression(expr),
             ast::Operand::Address(_, expr, _) => self.evaluate_expression(expr),
@@ -157,10 +147,7 @@ impl<'a> Compiler<'a> {
         }
     }
 
-    fn evaluate_expression(
-        &self,
-        expression: &mut ast::Expression<'a>,
-    ) -> Result<(), CompilerError> {
+    fn evaluate_expression(&self, expression: &mut ast::Expression) -> Result<(), CompilerError> {
         match expression {
             _ => todo!(),
         }

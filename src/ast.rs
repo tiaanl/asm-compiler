@@ -1,7 +1,7 @@
 use crate::instructions::Operation;
 use crate::lexer::Span;
 use std::collections::HashMap;
-use std::fmt::Formatter;
+use std::fmt::{Display, Formatter};
 
 #[allow(clippy::upper_case_acronyms)]
 #[repr(u8)]
@@ -17,7 +17,7 @@ pub enum ByteRegister {
     BH = 7,
 }
 
-impl std::fmt::Display for ByteRegister {
+impl Display for ByteRegister {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             ByteRegister::AL => write!(f, "AL"),
@@ -67,7 +67,7 @@ pub enum WordRegister {
     DI = 7,
 }
 
-impl std::fmt::Display for WordRegister {
+impl Display for WordRegister {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             WordRegister::AX => write!(f, "AX"),
@@ -110,7 +110,7 @@ pub enum Register {
     Word(WordRegister),
 }
 
-impl std::fmt::Display for Register {
+impl Display for Register {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Register::Byte(byte) => write!(f, "{}", byte),
@@ -144,7 +144,7 @@ pub enum Segment {
     DS = 3,
 }
 
-impl std::fmt::Display for Segment {
+impl Display for Segment {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Segment::ES => write!(f, "ES"),
@@ -177,7 +177,7 @@ pub enum DataSize {
     Word,
 }
 
-impl std::fmt::Display for DataSize {
+impl Display for DataSize {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             DataSize::Byte => write!(f, "BYTE"),
@@ -197,13 +197,13 @@ impl DataSize {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Value<'a> {
+pub enum Value {
     Constant(i32),
-    Label(&'a str),
+    Label(String),
     Register(Register),
 }
 
-impl<'a> std::fmt::Display for Value<'a> {
+impl<'a> Display for Value {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Value::Constant(value) => write!(f, "{}", *value),
@@ -221,7 +221,7 @@ pub enum Operator {
     Divide,
 }
 
-impl std::fmt::Display for Operator {
+impl Display for Operator {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Operator::Add => write!(f, "+"),
@@ -233,14 +233,14 @@ impl std::fmt::Display for Operator {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Expression<'a> {
-    PrefixOperator(Operator, Box<Expression<'a>>),
-    InfixOperator(Operator, Box<Expression<'a>>, Box<Expression<'a>>),
+pub enum Expression {
+    PrefixOperator(Operator, Box<Expression>),
+    InfixOperator(Operator, Box<Expression>, Box<Expression>),
 
-    Term(Value<'a>),
+    Term(Value),
 }
 
-impl<'a> std::fmt::Display for Expression<'a> {
+impl<'a> Display for Expression {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Expression::PrefixOperator(operator, right) => {
@@ -255,14 +255,14 @@ impl<'a> std::fmt::Display for Expression<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Operand<'a> {
-    Immediate(Expression<'a>),
-    Address(Option<DataSize>, Expression<'a>, Option<Segment>),
+pub enum Operand {
+    Immediate(Expression),
+    Address(Option<DataSize>, Expression, Option<Segment>),
     Register(Register),
     Segment(Segment),
 }
 
-impl<'a> std::fmt::Display for Operand<'a> {
+impl<'a> Display for Operand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Operand::Immediate(expr) => write!(f, "{}", expr),
@@ -290,13 +290,13 @@ impl<'a> std::fmt::Display for Operand<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Operands<'a> {
+pub enum Operands {
     None(Span),
-    Destination(Span, Operand<'a>),
-    DestinationAndSource(Span, Operand<'a>, Operand<'a>),
+    Destination(Span, Operand),
+    DestinationAndSource(Span, Operand, Operand),
 }
 
-impl<'a> Operands<'a> {
+impl<'a> Operands {
     #[allow(unused)]
     pub fn span(&self) -> &Span {
         match self {
@@ -307,7 +307,7 @@ impl<'a> Operands<'a> {
     }
 }
 
-impl<'a> std::fmt::Display for Operands<'a> {
+impl<'a> Display for Operands {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Operands::None(_) => Ok(()),
@@ -320,12 +320,12 @@ impl<'a> std::fmt::Display for Operands<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct Instruction<'a> {
+pub struct Instruction {
     pub operation: Operation,
-    pub operands: Operands<'a>,
+    pub operands: Operands,
 }
 
-impl<'a> std::fmt::Display for Instruction<'a> {
+impl<'a> Display for Instruction {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         if let Operands::None(_) = self.operands {
             write!(f, "{:?}", self.operation)
@@ -338,13 +338,13 @@ impl<'a> std::fmt::Display for Instruction<'a> {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Line<'a> {
     Label(Span, &'a str),
-    Instruction(Span, Instruction<'a>),
+    Instruction(Span, Instruction),
     Data(Vec<u8>),
-    Constant(Expression<'a>),
-    Times(Expression<'a>),
+    Constant(Expression),
+    Times(Expression),
 }
 
-impl<'a> std::fmt::Display for Line<'a> {
+impl<'a> Display for Line<'a> {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
             Line::Label(_, name) => write!(f, "{}:", name),

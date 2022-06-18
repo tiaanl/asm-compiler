@@ -8,17 +8,18 @@ pub enum ParserError {
     InvalidPrefixOperator,
 }
 
+#[inline]
 pub fn parse(source: &str, sink: impl FnMut(ast::Line)) -> Result<(), ParserError> {
-    let mut parser = Parser::new(source);
-    let _ = parser.parse(sink)?;
-    Ok(())
+    Parser::new(source).parse(sink)
 }
 
 struct Parser<'a> {
     lexer: Lexer<'a>,
+
+    /// The position of the current token.
     token_pos: usize,
 
-    /// The current token we are working on.
+    /// The current token we are parsing.
     token: Token,
 }
 
@@ -175,7 +176,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_operands(&mut self) -> Result<ast::Operands<'a>, ParserError> {
+    fn parse_operands(&mut self) -> Result<ast::Operands, ParserError> {
         let start = self.token.span().start;
 
         if matches!(self.token, Token::NewLine(_) | Token::EndOfFile(_)) {
@@ -207,7 +208,7 @@ impl<'a> Parser<'a> {
     fn parse_operand(
         &mut self,
         data_size: Option<ast::DataSize>,
-    ) -> Result<ast::Operand<'a>, ParserError> {
+    ) -> Result<ast::Operand, ParserError> {
         match self.token {
             Token::Punctuation(_, PunctuationKind::OpenBracket) => {
                 self.next_token();
@@ -238,14 +239,14 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_expression(&mut self) -> Result<ast::Expression<'a>, ParserError> {
+    fn parse_expression(&mut self) -> Result<ast::Expression, ParserError> {
         self.parse_expression_with_binding_power(0)
     }
 
     fn parse_memory_operand(
         &mut self,
         data_size: Option<ast::DataSize>,
-    ) -> Result<ast::Operand<'a>, ParserError> {
+    ) -> Result<ast::Operand, ParserError> {
         let mut segment_override = None;
 
         let expression = match self.token {
@@ -385,7 +386,7 @@ impl<'a> Parser<'a> {
     fn parse_expression_with_binding_power(
         &mut self,
         binding_power: u8,
-    ) -> Result<ast::Expression<'a>, ParserError> {
+    ) -> Result<ast::Expression, ParserError> {
         let mut left = match &self.token {
             Token::Punctuation(_, PunctuationKind::OpenParenthesis) => {
                 self.next_token();
@@ -446,7 +447,7 @@ impl<'a> Parser<'a> {
         Ok(left)
     }
 
-    fn parse_atom(&mut self) -> Result<ast::Value<'a>, ParserError> {
+    fn parse_atom(&mut self) -> Result<ast::Value, ParserError> {
         match self.token {
             Token::Literal(_, LiteralKind::Number(value)) => {
                 self.next_token();
@@ -477,7 +478,7 @@ impl<'a> Parser<'a> {
                 if let Some(register) = ast::Register::from_str(identifier) {
                     Ok(ast::Value::Register(register))
                 } else {
-                    Ok(ast::Value::Label(identifier))
+                    Ok(ast::Value::Label(identifier.to_owned()))
                 }
             }
 

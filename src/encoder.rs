@@ -527,7 +527,7 @@ pub mod funcs {
     }
 }
 
-impl<'a> ast::Operand<'a> {
+impl<'a> ast::Operand {
     fn matches_operand_type(&self, operand_type: OperandType) -> bool {
         match self {
             ast::Operand::Immediate(_) => match operand_type {
@@ -603,7 +603,7 @@ fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static 
     None
 }
 
-pub fn size_in_bytes<'a>(instruction: &ast::Instruction<'a>) -> Result<u32, EncodeError> {
+pub fn size_in_bytes<'a>(instruction: &ast::Instruction) -> Result<u32, EncodeError> {
     let data = match find_instruction_data_for(instruction) {
         Some(data) => data,
         None => {
@@ -620,7 +620,7 @@ pub fn size_in_bytes<'a>(instruction: &ast::Instruction<'a>) -> Result<u32, Enco
         .unwrap())
 }
 
-pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeError> {
+pub fn encode<'a>(instruction: &ast::Instruction) -> Result<Vec<u8>, EncodeError> {
     let data = match find_instruction_data_for(instruction) {
         Some(data) => data,
         None => {

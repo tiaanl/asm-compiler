@@ -55,13 +55,7 @@ fn main() {
     let source = std::fs::read_to_string(&args.source).unwrap();
     let source = source.as_str();
 
-    let compiler_session = CompilerSession::new();
-
-    let sink = |line: ast::Line| {
-        println!("line: {}", line);
-    };
-
-    if let Err(err) = parser::parse(source, sink) {
+    if let Err(err) = parser::parse(source, |c| {}) {
         match err {
             parser::ParserError::Expected(pos, err) => {
                 eprintln!("Error: {}", err);
