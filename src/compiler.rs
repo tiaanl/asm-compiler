@@ -1,6 +1,8 @@
 use crate::ast;
+use crate::ast::Line;
 use crate::encoder::EncodeError;
 use crate::lexer::Span;
+use crate::parser::LineConsumer;
 use std::collections::HashMap;
 use std::fmt::Formatter;
 
@@ -57,9 +59,16 @@ pub struct CompilerSession<'a> {
     pub labels: HashMap<&'a str, usize>,
 }
 
+#[derive(Debug)]
 pub struct Compiler<'a> {
     lines: Vec<ast::Line<'a>>,
     labels: HashMap<&'a str, usize>,
+}
+
+impl<'a> LineConsumer<'a> for Compiler<'a> {
+    fn consume(&mut self, line: Line<'a>) {
+        self.lines.push(line);
+    }
 }
 
 #[allow(dead_code)]

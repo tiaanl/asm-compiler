@@ -1,6 +1,7 @@
 use crate::ast;
 use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
+use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
 pub enum ParserError {
@@ -8,9 +9,43 @@ pub enum ParserError {
     InvalidPrefixOperator,
 }
 
+struct FoundToken<'a>(Token, &'a str);
+
+impl<'a> Display for FoundToken<'a> {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match &self.0 {
+            Token::Whitespace(_) => write!(f, "whitespace"),
+            Token::Identifier(_) => {
+                write!(f, "identifier \"{}\"", self.1)
+            }
+            Token::Literal(_, literal_kind) => match literal_kind {
+                LiteralKind::Number(value) => write!(f, "number \"{}\"", value),
+                LiteralKind::String(terminated) => {
+                    if *terminated {
+                        write!(f, "string \"{}\"", self.1)
+                    } else {
+                        write!(f, "unterminated string \"{}\"", self.1)
+                    }
+                }
+            },
+            Token::Punctuation(_, _) => {
+                write!(f, "punctuation \"{}\"", self.1)
+            }
+            Token::Comment(_) => write!(f, "comment \"{}\"", self.1),
+            Token::NewLine(_) => write!(f, "new line"),
+            Token::EndOfFile(_) => write!(f, "end of file"),
+            Token::Invalid(_, c) => write!(f, "invalid character \"{}\"", c),
+        }
+    }
+}
+
+pub trait LineConsumer<'a> {
+    fn consume(&mut self, line: ast::Line<'a>);
+}
+
 #[inline]
-pub fn parse(source: &str, sink: impl FnMut(ast::Line)) -> Result<(), ParserError> {
-    Parser::new(source).parse(sink)
+pub fn parse<'a>(source: &'a str, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
+    Parser::new(source).parse(consumer)
 }
 
 struct Parser<'a> {
@@ -37,7 +72,7 @@ impl<'a> Parser<'a> {
         parser
     }
 
-    fn parse(&mut self, mut sink: impl FnMut(ast::Line)) -> Result<(), ParserError> {
+    fn parse(&mut self, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
         loop {
             match self.token {
                 Token::NewLine(_) => {
@@ -49,39 +84,39 @@ impl<'a> Parser<'a> {
                     let identifier = self.lexer.source_at(span);
                     if let Some(operation) = str_to_operation(identifier) {
                         let instruction = self.parse_instruction(operation)?;
-                        sink(instruction);
+                        consumer.consume(instruction);
                     } else {
                         match identifier.to_lowercase().as_str() {
                             "equ" => {
                                 let line = self.parse_equ()?;
-                                sink(line);
+                                consumer.consume(line);
                             }
 
                             "db" => {
                                 let line = self.parse_data::<u8>()?;
-                                sink(line);
+                                consumer.consume(line);
                             }
 
                             "dw" => {
                                 let line = self.parse_data::<u16>()?;
-                                sink(line);
+                                consumer.consume(line);
                             }
 
                             "dd" => {
                                 let line = self.parse_data::<u32>()?;
-                                sink(line);
+                                consumer.consume(line);
                             }
 
                             "times" => {
                                 let line = self.parse_times()?;
-                                sink(line);
+                                consumer.consume(line);
                             }
 
                             _ => {
                                 // If no known keyword is found, we assume the identifier is a
                                 // label.
                                 let line = self.parse_label(identifier)?;
-                                sink(line);
+                                consumer.consume(line);
                             }
                         }
                     }
@@ -91,8 +126,8 @@ impl<'a> Parser<'a> {
 
                 _ => {
                     return Err(self.expected(format!(
-                        "Identifier or label expected, found {:?}",
-                        self.token,
+                        "Identifier or label expected, found {}",
+                        FoundToken(self.token.clone(), self.lexer.source_at(self.token.span())),
                     )))
                 }
             }

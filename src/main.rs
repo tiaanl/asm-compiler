@@ -55,7 +55,9 @@ fn main() {
     let source = std::fs::read_to_string(&args.source).unwrap();
     let source = source.as_str();
 
-    if let Err(err) = parser::parse(source, |c| {}) {
+    let mut compiler = Compiler::new(vec![]);
+
+    if let Err(err) = parser::parse(source, &mut compiler) {
         match err {
             parser::ParserError::Expected(pos, err) => {
                 eprintln!("Error: {}", err);
@@ -66,6 +68,8 @@ fn main() {
 
         return;
     }
+
+    println!("{:?}", compiler);
 
     // if args.syntax_only {
     //     for line in &lines {
