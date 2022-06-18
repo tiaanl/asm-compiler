@@ -22,6 +22,105 @@ pub enum Code {
     encoding(u8),
 }
 
+impl Code {
+    pub fn encode(&self, instruction: &ast::Instruction, output: &mut Vec<u8>) -> bool {
+        match self {
+            Code::ib => match &instruction.operands {
+                ast::Operands::Destination(_, ast::Operand::Immediate(_expr)) => {
+                    eprintln!("WARNING: dummy immediate");
+                    output.push(0);
+                    true
+                }
+
+                ast::Operands::DestinationAndSource(_, ast::Operand::Immediate(_expr), _) => {
+                    eprintln!("WARNING: dummy immediate");
+                    output.push(0);
+                    true
+                }
+
+                ast::Operands::DestinationAndSource(_, _, ast::Operand::Immediate(_expr)) => {
+                    eprintln!("WARNING: dummy immediate");
+                    output.push(0);
+                    true
+                }
+
+                _ => false,
+            },
+
+            Code::byte(byte) => {
+                output.push(*byte);
+                true
+            }
+
+            Code::plus_reg(byte) => match &instruction.operands {
+                ast::Operands::Destination(_, ast::Operand::Register(register)) => {
+                    output.push(byte.wrapping_add(register.encoding()));
+                    true
+                }
+
+                ast::Operands::DestinationAndSource(_, ast::Operand::Register(register), _) => {
+                    output.push(byte.wrapping_add(register.encoding()));
+                    true
+                }
+
+                _ => false,
+            },
+
+            Code::mrm => match &instruction.operands {
+                ast::Operands::DestinationAndSource(
+                    _,
+                    ast::Operand::Register(reg),
+                    ast::Operand::Register(mem),
+                ) => {
+                    output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
+                    true
+                }
+
+                ast::Operands::DestinationAndSource(
+                    _,
+                    ast::Operand::Register(reg),
+                    ast::Operand::Segment(seg),
+                ) => {
+                    output.push(mod_reg_rm(0b11, seg.encoding(), reg.encoding()));
+                    true
+                }
+
+                ast::Operands::DestinationAndSource(
+                    _,
+                    ast::Operand::Segment(reg),
+                    ast::Operand::Register(seg),
+                ) => {
+                    output.push(mod_reg_rm(0b11, reg.encoding(), seg.encoding()));
+                    true
+                }
+
+                _ => false,
+            },
+
+            _ => false,
+        }
+    }
+
+    fn size_in_bytes(&self) -> u32 {
+        match self {
+            Code::ib => 1,
+            Code::ibs => 1,
+            Code::iw => 2,
+            Code::iwd => 2,
+            Code::seg => todo!(),
+            Code::rel => todo!(),
+            Code::repe => todo!(),
+            Code::rel8 => todo!(),
+            Code::jmp8 => todo!(),
+            Code::wait => todo!(),
+            Code::byte(_) => 1,
+            Code::plus_reg(_) => 1,
+            Code::mrm => 1,
+            Code::encoding(_) => 1,
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum EncodeError {
     InvalidOperands(Span),
@@ -35,7 +134,8 @@ impl EncodeError {
     }
 }
 
-type Encoder = fn(&ast::Instruction, &InstructionData) -> Result<Vec<u8>, EncodeError>;
+type Encoder =
+    fn(&Code, &ast::Instruction, &InstructionData, &mut Vec<u8>) -> Result<(), EncodeError>;
 type Sizer = fn(&ast::Instruction, &InstructionData) -> Result<u32, EncodeError>;
 
 impl std::fmt::Display for EncodeError {
@@ -98,59 +198,11 @@ pub struct InstructionData {
 }
 
 #[must_use]
-fn mod_reg_rm(encoding: u8, register: u8, mem: u8) -> u8 {
-    (encoding << 6) | (register << 3) | mem
-}
-
-fn code_common(code: &Code, instruction: &ast::Instruction, output: &mut Vec<u8>) -> bool {
-    match code {
-        Code::byte(byte) => {
-            output.push(*byte);
-            true
-        }
-
-        Code::plus_reg(byte) => match &instruction.operands {
-            ast::Operands::Destination(_, ast::Operand::Register(register)) => {
-                output.push(byte.wrapping_add(register.encoding()));
-                true
-            }
-
-            _ => false,
-        },
-
-        Code::mrm => match &instruction.operands {
-            ast::Operands::DestinationAndSource(
-                _,
-                ast::Operand::Register(reg),
-                ast::Operand::Register(mem),
-            ) => {
-                output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
-                true
-            }
-
-            ast::Operands::DestinationAndSource(
-                _,
-                ast::Operand::Register(reg),
-                ast::Operand::Segment(mem),
-            ) => {
-                output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
-                true
-            }
-
-            ast::Operands::DestinationAndSource(
-                _,
-                ast::Operand::Segment(reg),
-                ast::Operand::Register(mem),
-            ) => {
-                output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
-                true
-            }
-
-            _ => false,
-        },
-
-        _ => false,
-    }
+fn mod_reg_rm(encoding: u8, reg: u8, mem: u8) -> u8 {
+    debug_assert!(encoding <= 0b11);
+    debug_assert!(reg <= 0b111);
+    debug_assert!(mem <= 0b111);
+    (encoding << 6) | (reg << 3) | mem
 }
 
 pub mod funcs {
@@ -158,9 +210,11 @@ pub mod funcs {
 
     pub trait EncoderTrait {
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError>;
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError>;
 
         fn size(instruction: &ast::Instruction, data: &InstructionData)
             -> Result<u32, EncodeError>;
@@ -170,9 +224,11 @@ pub mod funcs {
         use super::*;
 
         pub fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
             todo!()
         }
 
@@ -189,10 +245,12 @@ pub mod funcs {
     impl EncoderTrait for immediate {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
+            todo!("{:?} {:?}", instruction, data.codes)
         }
 
         #[inline]
@@ -207,36 +265,29 @@ pub mod funcs {
     #[allow(non_camel_case_types)]
     pub struct memory_and_register;
     impl EncoderTrait for memory_and_register {
-        #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| {
-                let mut output = vec![];
-
-                for code in data.codes {
-                    if !code_common(code, instruction, &mut output) {
-                        match code {
-                            Code::mrm => match &instruction.operands {
-                                ast::Operands::DestinationAndSource(
-                                    _,
-                                    ast::Operand::Address(_, _, _),
-                                    ast::Operand::Register(_),
-                                ) => {
-                                    todo!("mem reg")
-                                }
-
-                                _ => unreachable!("{:?}", instruction),
-                            },
-
-                            _ => todo!("{:?}", code),
-                        }
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
+            match code {
+                Code::mrm => match &instruction.operands {
+                    ast::Operands::DestinationAndSource(
+                        _,
+                        ast::Operand::Address(_, _, _),
+                        ast::Operand::Register(_),
+                    ) => {
+                        todo!("mem reg")
                     }
-                }
 
-                Ok(output)
-            })(instruction, data)
+                    _ => unreachable!("{:?}", instruction),
+                },
+
+                _ => todo!("{:?}", code),
+            }
+
+            Ok(())
         }
 
         #[inline]
@@ -253,34 +304,28 @@ pub mod funcs {
     impl EncoderTrait for register_and_memory {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| {
-                let mut output = vec![];
-
-                for code in data.codes {
-                    if !code_common(code, instruction, &mut output) {
-                        match code {
-                            Code::byte(byte) => output.push(*byte),
-                            Code::mrm => match &instruction.operands {
-                                ast::Operands::DestinationAndSource(
-                                    _,
-                                    ast::Operand::Address(_, _, _),
-                                    ast::Operand::Register(_),
-                                ) => {
-                                    todo!("mem reg")
-                                }
-
-                                _ => unreachable!("{:?}", instruction),
-                            },
-                            _ => todo!("{:?}", code),
-                        }
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
+            match code {
+                Code::byte(byte) => output.push(*byte),
+                Code::mrm => match &instruction.operands {
+                    ast::Operands::DestinationAndSource(
+                        _,
+                        ast::Operand::Address(_, _, _),
+                        ast::Operand::Register(_),
+                    ) => {
+                        todo!("mem reg")
                     }
-                }
 
-                Ok(output)
-            })(instruction, data)
+                    _ => unreachable!("{:?}", instruction),
+                },
+                _ => todo!("{:?}", code),
+            }
+
+            Ok(())
         }
 
         #[inline]
@@ -296,9 +341,11 @@ pub mod funcs {
         use super::*;
 
         pub fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
             let mut output = vec![];
 
             dbg!(data.codes);
@@ -320,7 +367,7 @@ pub mod funcs {
                 }
             }
 
-            Ok(output)
+            Ok(())
         }
 
         pub fn size(
@@ -337,13 +384,27 @@ pub mod funcs {
     impl EncoderTrait for immediate_source {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!("{:?}", instruction))(
-                instruction,
-                data,
-            )
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
+            dbg!(data.codes);
+            match &instruction.operands {
+                ast::Operands::DestinationAndSource(_, _, ast::Operand::Immediate(expr)) => {
+                    todo!()
+                }
+
+                ast::Operands::DestinationAndSource(_, _, ast::Operand::Address(_, expr, _)) => {
+                    // An address can be written as an immediate
+                    output.push(0);
+                    output.push(0);
+                    eprintln!("WARNING: dummy address");
+                    Ok(())
+                }
+
+                _ => unreachable!("{:?}", instruction),
+            }
         }
 
         #[inline]
@@ -360,9 +421,11 @@ pub mod funcs {
     impl EncoderTrait for jump_immediate {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
             (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
         }
 
@@ -380,9 +443,11 @@ pub mod funcs {
     impl EncoderTrait for memory {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
             (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
         }
 
@@ -400,9 +465,11 @@ pub mod funcs {
     impl EncoderTrait for register {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
             (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
         }
 
@@ -420,10 +487,12 @@ pub mod funcs {
     impl EncoderTrait for register_immediate {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
+            todo!("{:?} {:?}", instruction, data.codes)
         }
 
         #[inline]
@@ -440,9 +509,11 @@ pub mod funcs {
     impl EncoderTrait for register_source {
         #[inline]
         fn encode(
+            code: &Code,
             instruction: &ast::Instruction,
             data: &InstructionData,
-        ) -> Result<Vec<u8>, EncodeError> {
+            output: &mut Vec<u8>,
+        ) -> Result<(), EncodeError> {
             (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
         }
 
@@ -541,13 +612,12 @@ pub fn size_in_bytes<'a>(instruction: &ast::Instruction<'a>) -> Result<u32, Enco
         }
     };
 
-    Ok(match (&data.destination, &data.source) {
-        (OperandType::none, OperandType::none) => 1,
-        (OperandType::al, OperandType::imm8) => 2,
-        (OperandType::ax, OperandType::imm16) => 3,
-        _ => 0,
-        // _ => todo!("{:?}, {:?}", &data.destination, &data.source),
-    })
+    Ok(data
+        .codes
+        .iter()
+        .map(|c| c.size_in_bytes())
+        .reduce(|a, v| a + v)
+        .unwrap())
 }
 
 pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeError> {
@@ -559,15 +629,17 @@ pub fn encode<'a>(instruction: &ast::Instruction<'a>) -> Result<Vec<u8>, EncodeE
         }
     };
 
-    dbg!(
-        "found data",
-        &data.operation,
-        &data.destination,
-        &data.source
-    );
+    let mut output = vec![];
 
     let encoder = data.encoder;
-    encoder(instruction, data)
+
+    for code in data.codes {
+        if !code.encode(instruction, &mut output) {
+            encoder(code, instruction, data, &mut output)?;
+        }
+    }
+
+    Ok(output)
 }
 
 #[cfg(test)]

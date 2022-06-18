@@ -8,10 +8,10 @@ pub enum ParserError {
     InvalidPrefixOperator,
 }
 
-pub fn parse(source: &str) -> Result<Vec<ast::Line>, ParserError> {
+pub fn parse(source: &str, sink: impl FnMut(ast::Line)) -> Result<(), ParserError> {
     let mut parser = Parser::new(source);
-    let _ = parser.parse()?;
-    Ok(parser.lines)
+    let _ = parser.parse(sink)?;
+    Ok(())
 }
 
 struct Parser<'a> {
@@ -20,8 +20,6 @@ struct Parser<'a> {
 
     /// The current token we are working on.
     token: Token,
-
-    lines: Vec<ast::Line<'a>>,
 }
 
 impl<'a> Parser<'a> {
@@ -30,7 +28,6 @@ impl<'a> Parser<'a> {
             lexer: Lexer::new(source),
             token_pos: 0,
             token: Token::EndOfFile(0..0),
-            lines: vec![],
         };
 
         // Initialize the current token with the first token that we can fetch from the lexer.
@@ -39,7 +36,7 @@ impl<'a> Parser<'a> {
         parser
     }
 
-    fn parse(&mut self) -> Result<(), ParserError> {
+    fn parse(&mut self, mut sink: impl FnMut(ast::Line)) -> Result<(), ParserError> {
         loop {
             match self.token {
                 Token::NewLine(_) => {
@@ -51,39 +48,39 @@ impl<'a> Parser<'a> {
                     let identifier = self.lexer.source_at(span);
                     if let Some(operation) = str_to_operation(identifier) {
                         let instruction = self.parse_instruction(operation)?;
-                        self.lines.push(instruction);
+                        sink(instruction);
                     } else {
                         match identifier.to_lowercase().as_str() {
                             "equ" => {
                                 let line = self.parse_equ()?;
-                                self.lines.push(line);
+                                sink(line);
                             }
 
                             "db" => {
                                 let line = self.parse_data::<u8>()?;
-                                self.lines.push(line);
+                                sink(line);
                             }
 
                             "dw" => {
                                 let line = self.parse_data::<u16>()?;
-                                self.lines.push(line);
+                                sink(line);
                             }
 
                             "dd" => {
                                 let line = self.parse_data::<u32>()?;
-                                self.lines.push(line);
+                                sink(line);
                             }
 
                             "times" => {
                                 let line = self.parse_times()?;
-                                self.lines.push(line);
+                                sink(line);
                             }
 
                             _ => {
                                 // If no known keyword is found, we assume the identifier is a
                                 // label.
                                 let line = self.parse_label(identifier)?;
-                                self.lines.push(line);
+                                sink(line);
                             }
                         }
                     }

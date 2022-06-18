@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::fmt::Formatter;
 
 impl<'a> ast::Line<'a> {
-    fn size_in_bytes(&self) -> Result<u32, crate::encoder::EncodeError> {
+    fn size_in_bytes(&self) -> Result<u32, EncodeError> {
         match self {
             ast::Line::Instruction(_, instruction) => crate::encoder::size_in_bytes(instruction),
             ast::Line::Data(data) => Ok(data.len() as u32),
@@ -20,6 +20,7 @@ impl<'a> ast::Line<'a> {
 #[derive(Debug)]
 pub enum CompilerError {
     EncodeError(EncodeError),
+    UnknownLabel(String),
 }
 
 impl From<EncodeError> for CompilerError {
@@ -34,6 +35,9 @@ impl std::fmt::Display for CompilerError {
             Self::EncodeError(err) => {
                 write!(f, "{}", err)
             }
+            Self::UnknownLabel(label) => {
+                write!(f, "Unknown label: {}", label)
+            }
         }
     }
 }
@@ -42,12 +46,30 @@ impl CompilerError {
     pub fn span(&self) -> &Span {
         match self {
             CompilerError::EncodeError(err) => err.span(),
+            CompilerError::UnknownLabel(_) => &(0..0),
+        }
+    }
+}
+
+pub struct CompilerSession<'a> {
+    instructions: Vec<ast::Instruction<'a>>,
+    constants: HashMap<&'a str, ast::Expression<'a>>,
+    labels: HashMap<&'a str, usize>,
+}
+
+impl<'a> CompilerSession<'a> {
+    pub fn new() -> Self {
+        Self {
+            instructions: vec![],
+            constants: HashMap::new(),
+            labels: HashMap::new(),
         }
     }
 }
 
 pub struct Compiler<'a> {
     lines: Vec<ast::Line<'a>>,
+    labels: HashMap<&'a str, usize>,
 }
 
 #[allow(dead_code)]
@@ -70,22 +92,24 @@ fn encode_instruction(
 
 impl<'a> Compiler<'a> {
     pub fn new(lines: Vec<ast::Line<'a>>) -> Self {
-        Self { lines }
+        Self {
+            lines,
+            labels: HashMap::new(),
+        }
     }
 
-    pub fn compile(&mut self) -> Result<(), CompilerError> {
+    pub fn compile(&mut self) -> Result<Vec<u8>, CompilerError> {
         let mut outputs: Vec<Output<'a, '_>> = vec![];
-        let mut labels: HashMap<&'a str, usize> = HashMap::new();
 
         let mut address = 0;
         for line in &self.lines {
             match line {
                 ast::Line::Label(_, label) => {
-                    labels.insert(label, outputs.len());
+                    self.labels.insert(label, outputs.len());
                 }
-                line @ ast::Line::Instruction(ref span, instruction) => outputs.push(Output {
+                ast::Line::Instruction(ref span, instruction) => outputs.push(Output {
                     address,
-                    bytes: encode_instruction(span.start..span.end, instruction)?,
+                    bytes: vec![],
                     line,
                 }),
                 line @ ast::Line::Data(data) => outputs.push(Output {
@@ -103,10 +127,42 @@ impl<'a> Compiler<'a> {
             address += line.size_in_bytes()?;
         }
 
-        for output in &outputs {
-            println!("{:?}", output);
-        }
+        Ok(vec![])
+    }
 
-        Ok(())
+    fn evaluate_instruction(
+        &self,
+        instruction: &mut ast::Instruction<'a>,
+    ) -> Result<(), CompilerError> {
+        self.evaluate_operands(&mut instruction.operands)
+    }
+
+    fn evaluate_operands(&self, operands: &mut ast::Operands<'a>) -> Result<(), CompilerError> {
+        match operands {
+            ast::Operands::None(_) => Ok(()),
+            ast::Operands::Destination(span, destination) => self.evaluate_operand(destination),
+            ast::Operands::DestinationAndSource(span, destination, source) => {
+                self.evaluate_operand(source)?;
+                self.evaluate_operand(destination)?;
+                Ok(())
+            }
+        }
+    }
+
+    fn evaluate_operand(&self, operand: &mut ast::Operand<'a>) -> Result<(), CompilerError> {
+        match operand {
+            ast::Operand::Immediate(expr) => self.evaluate_expression(expr),
+            ast::Operand::Address(_, expr, _) => self.evaluate_expression(expr),
+            _ => Ok(()),
+        }
+    }
+
+    fn evaluate_expression(
+        &self,
+        expression: &mut ast::Expression<'a>,
+    ) -> Result<(), CompilerError> {
+        match expression {
+            _ => todo!(),
+        }
     }
 }

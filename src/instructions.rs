@@ -376,7 +376,7 @@ pub const DATA: &[InstructionData] = &[
     id!(Xor, rm8, imm, memory_immediate, &[Code::byte(0x82), Code::encoding(0x06), Code::ib]),
 ];
 
-#[derive(Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq)]
 #[repr(u8)]
 pub enum Operation {
     Aaa,

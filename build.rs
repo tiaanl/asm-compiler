@@ -245,7 +245,8 @@ fn main() {
     }
 
     out.write_all(
-        "];\n\n#[derive(Debug, Eq, PartialEq)]\n#[repr(u8)]\npub enum Operation {\n".as_bytes(),
+        "];\n\n#[derive(Clone, Debug, Eq, PartialEq)]\n#[repr(u8)]\npub enum Operation {\n"
+            .as_bytes(),
     )
     .unwrap();
     mnemonics.iter().for_each(|m| {

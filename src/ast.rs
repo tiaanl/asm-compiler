@@ -319,7 +319,7 @@ impl<'a> std::fmt::Display for Operands<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Instruction<'a> {
     pub operation: Operation,
     pub operands: Operands<'a>,
@@ -335,7 +335,7 @@ impl<'a> std::fmt::Display for Instruction<'a> {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Line<'a> {
     Label(Span, &'a str),
     Instruction(Span, Instruction<'a>),

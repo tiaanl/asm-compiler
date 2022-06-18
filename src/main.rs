@@ -5,7 +5,7 @@ mod instructions;
 mod lexer;
 mod parser;
 
-use crate::compiler::Compiler;
+use crate::compiler::{Compiler, CompilerSession};
 use crate::lexer::Span;
 use clap::Parser as ClapParser;
 
@@ -55,33 +55,41 @@ fn main() {
     let source = std::fs::read_to_string(&args.source).unwrap();
     let source = source.as_str();
 
-    let lines = match parser::parse(source) {
-        Ok(lines) => lines,
-        Err(err) => {
-            match err {
-                parser::ParserError::Expected(pos, err) => {
-                    eprintln!("Error: {}", err);
-                    print_source_pos(source, &(pos..pos + 2), Some(args.source.as_str()));
-                }
-                _ => panic!("another error"),
-            }
+    let compiler_session = CompilerSession::new();
 
-            return;
-        }
+    let sink = |line: ast::Line| {
+        println!("line: {}", line);
     };
 
-    if args.syntax_only {
-        for line in &lines {
-            println!("{}", line);
-        }
-    } else {
-        let mut compiler = Compiler::new(lines);
-        match compiler.compile() {
-            Ok(_) => println!("DONE"),
-            Err(err) => {
-                eprintln!("{}", err);
-                print_source_pos(source, err.span(), Some(args.source.as_str()))
+    if let Err(err) = parser::parse(source, sink) {
+        match err {
+            parser::ParserError::Expected(pos, err) => {
+                eprintln!("Error: {}", err);
+                print_source_pos(source, &(pos..pos + 2), Some(args.source.as_str()));
             }
+            _ => panic!("another error"),
         }
+
+        return;
     }
+
+    // if args.syntax_only {
+    //     for line in &lines {
+    //         println!("{}", line);
+    //     }
+    // } else {
+    //     let mut compiler = Compiler::new(lines);
+    //     match compiler.compile() {
+    //         Ok(bytes) => {
+    //             for c in bytes {
+    //                 print!("{:02x} ", c);
+    //             }
+    //             println!();
+    //         }
+    //         Err(err) => {
+    //             eprintln!("{}", err);
+    //             print_source_pos(source, err.span(), Some(args.source.as_str()))
+    //         }
+    //     }
+    // }
 }
