@@ -1,3 +1,5 @@
+#![allow(unused)]
+
 use crate::ast;
 use crate::ast::Line;
 use crate::encoder::EncodeError;

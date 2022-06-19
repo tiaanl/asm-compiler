@@ -1,3 +1,5 @@
+#![allow(dead_code, unused)]
+
 use crate::ast;
 use crate::instructions::Operation;
 use crate::lexer::Span;

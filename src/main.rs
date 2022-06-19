@@ -5,7 +5,7 @@ mod instructions;
 mod lexer;
 mod parser;
 
-use crate::compiler::{Compiler, CompilerSession};
+use crate::compiler::Compiler;
 use crate::lexer::Span;
 use clap::Parser as ClapParser;
 

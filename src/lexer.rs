@@ -111,8 +111,16 @@ impl<'a> Lexer<'a> {
         Self { source }
     }
 
+    fn char_at(&self, index: usize) -> Option<char> {
+        if index < self.source.len() {
+            self.source[index..].chars().next()
+        } else {
+            None
+        }
+    }
+
     pub fn next_token(&mut self) -> Token {
-        let first = match self.first() {
+        let first = match self.char_at(0) {
             Some(c) => c,
             None => return Token::EndOfFile(0),
         };
@@ -154,46 +162,25 @@ impl<'a> Lexer<'a> {
         }
     }
 
-    #[inline]
-    fn first(&self) -> Option<char> {
-        self.source.chars().next()
-    }
-
-    #[inline]
-    fn second(&self) -> Option<char> {
-        let mut chars = self.source.chars();
-
-        if chars.next().is_some() {
-            chars.next()
-        } else {
-            None
-        }
-    }
-
-    #[inline]
-    fn punctuation(&mut self, punctuation: PunctuationKind) -> Token {
-        Token::Punctuation(1, punctuation)
-    }
-
     fn number(&mut self, first_char: char) -> Token {
         debug_assert!(is_decimal_digit(first_char));
 
         if first_char == '0' {
             self.number_literal_with_prefix()
         } else {
-            self.number_literal_with_suffix(0)
+            self.number_literal_with_suffix()
         }
     }
 
     fn number_literal_with_prefix(&mut self) -> Token {
         macro_rules! number_with_base {
             ($prefix:expr, $is_digit:ident, $base:expr) => {{
-                debug_assert!(self.first().unwrap() == '0');
-                debug_assert!(self.second().unwrap() == $prefix);
+                debug_assert!(self.char_at(0).unwrap() == '0');
+                debug_assert!(self.char_at(1).unwrap() == $prefix);
 
-                let mut end = 0;
+                let mut end = 1;
 
-                let found = first_not_of!(self, $is_digit, 1);
+                let found = first_not_of!(self, $is_digit, 2);
 
                 // If no additional characters were found, then we return the '0' character as the
                 // literal only.
@@ -216,7 +203,7 @@ impl<'a> Lexer<'a> {
             }};
         }
 
-        if let Some(second_char) = self.second() {
+        if let Some(second_char) = self.char_at(1) {
             // If we have a prefix at this point, then we can handle it immediately.
             match second_char {
                 c @ 'b' => return number_with_base!(c, is_binary_digit, 2),
@@ -225,21 +212,21 @@ impl<'a> Lexer<'a> {
                 c @ 'x' => return number_with_base!(c, is_hexadecimal_digit, 16),
 
                 // [second_char] is not a valid prefix, so fall through to handle other formats.
-                _ => self.number_literal_with_suffix(2),
+                _ => self.number_literal_with_suffix(),
             }
         } else {
             // We reached the end of the source and we only have the '0' character.
-            return Token::Literal(1, LiteralKind::Number(0));
+            Token::Literal(1, LiteralKind::Number(0))
         }
     }
 
-    fn number_literal_with_suffix(&mut self, start: usize) -> Token {
-        debug_assert!(is_decimal_digit(self.first().unwrap()));
+    fn number_literal_with_suffix(&mut self) -> Token {
+        debug_assert!(is_decimal_digit(self.char_at(0).unwrap()));
 
         // Consume as many of the highest base (hexadecimal) characters as we can.
         let mut end = first_not_of!(self, is_hexadecimal_digit);
 
-        let mut s = &self.source[start..end];
+        let mut s = &self.source[..end];
 
         // We can unwrap here, because we are guaranteed to have at least a single numeric
         // character.
@@ -255,7 +242,7 @@ impl<'a> Lexer<'a> {
             Err(_) => {
                 // Consume another character to see if there is a suffix that is not a valid
                 // hexadecimal character as well.
-                match self.first() {
+                match self.char_at(end) {
                     Some(c) => match Base::try_from_char(c) {
                         Ok(base) => {
                             // Consume the suffix.
@@ -286,9 +273,6 @@ impl<'a> Lexer<'a> {
     fn string_literal(&mut self) -> Token {
         // Consume the opening character.
         let mut end = 1;
-
-        // The start is the first character after the opening character.
-        let start = end;
 
         let first_terminator = self.source[end..].find('\'');
         let first_new_line = self.source[end..].find('\n');
@@ -453,139 +437,81 @@ mod tests {
 
     #[test]
     fn string_literals() {
-        let mut lexer = Lexer::new("  'a string literal ;; 123'\ntest");
-        assert_next_token!(Token::Whitespace(0..2), "  ");
         assert_next_token!(
-            Token::Literal(3..26, LiteralKind::String(true)),
-            "a string literal ;; 123"
+            "'a string literal ;; 123'",
+            Token::Literal(25, LiteralKind::String(true)),
+            "'a string literal ;; 123'"
         );
-        assert_next_token!(Token::NewLine(27..28), "\n");
-        assert_next_token!(Token::Identifier(28..32), "test");
-        assert_next_token!(Token::EndOfFile(32..32), "");
 
-        let mut lexer = Lexer::new("  'a string literal  ");
-        assert_next_token!(Token::Whitespace(0..2), "  ");
         assert_next_token!(
-            Token::Literal(3..21, LiteralKind::String(false)),
-            "a string literal  "
+            "'a string literal ;; 123'test",
+            Token::Literal(25, LiteralKind::String(true)),
+            "'a string literal ;; 123'"
         );
-        assert_next_token!(Token::EndOfFile(21..21), "");
 
-        let mut lexer = Lexer::new("  'a string literal\n'  ");
-        assert_next_token!(Token::Whitespace(0..2), "  ");
         assert_next_token!(
-            Token::Literal(3..19, LiteralKind::String(false)),
-            "a string literal"
+            "'a string literal  ",
+            Token::Literal(19, LiteralKind::String(false)),
+            "'a string literal  "
         );
-        assert_next_token!(Token::NewLine(19..20), "\n");
-        assert_next_token!(Token::Literal(21..23, LiteralKind::String(false)), "  ");
+        assert_next_token!(
+            "'a string literal\n'",
+            Token::Literal(17, LiteralKind::String(false)),
+            "'a string literal"
+        );
     }
 
     #[test]
     fn number_literals() {
         // binary
-        assert_parse!(
+        assert_next_token!(
             "11001000b",
-            Token::Literal(0..9, LiteralKind::Number(200)),
+            Token::Literal(9, LiteralKind::Number(200)),
             "11001000b"
         );
-        assert_parse!(
+        assert_next_token!(
             "0b11001000",
-            Token::Literal(0..10, LiteralKind::Number(200)),
+            Token::Literal(10, LiteralKind::Number(200)),
             "0b11001000"
         );
 
         // octal
-        assert_parse!(
-            "310o",
-            Token::Literal(0..4, LiteralKind::Number(200)),
-            "310o"
-        );
-        assert_parse!(
+        assert_next_token!("310o", Token::Literal(4, LiteralKind::Number(200)), "310o");
+        assert_next_token!(
             "0o310",
-            Token::Literal(0..5, LiteralKind::Number(200)),
+            Token::Literal(5, LiteralKind::Number(200)),
             "0o310"
         );
 
         // decimal
-        assert_parse!("200", Token::Literal(0..3, LiteralKind::Number(200)), "200");
-        assert_parse!(
-            "0200",
-            Token::Literal(0..4, LiteralKind::Number(200)),
-            "0200"
-        );
-        assert_parse!(
-            "200d",
-            Token::Literal(0..4, LiteralKind::Number(200)),
-            "200d"
-        );
-        assert_parse!(
+        assert_next_token!("200", Token::Literal(3, LiteralKind::Number(200)), "200");
+        assert_next_token!("0200", Token::Literal(4, LiteralKind::Number(200)), "0200");
+        assert_next_token!("200d", Token::Literal(4, LiteralKind::Number(200)), "200d");
+        assert_next_token!(
             "0200d",
-            Token::Literal(0..5, LiteralKind::Number(200)),
+            Token::Literal(5, LiteralKind::Number(200)),
             "0200d"
         );
-        assert_parse!(
+        assert_next_token!(
             "0d200",
-            Token::Literal(0..5, LiteralKind::Number(200)),
+            Token::Literal(5, LiteralKind::Number(200)),
             "0d200"
         );
 
         // hex
-        assert_parse!(
-            "0c8h",
-            Token::Literal(0..4, LiteralKind::Number(200)),
-            "0c8h"
-        );
-        assert_parse!(
-            "0xc8",
-            Token::Literal(0..4, LiteralKind::Number(200)),
-            "0xc8"
-        );
-
-        // ensure we process the suffixes
-        let mut lexer = Lexer::new("10d\n10h\n10b\n");
-        assert_next_token!(Token::Literal(0..3, LiteralKind::Number(10)), "10d");
-        assert_next_token!(Token::NewLine(3..4), "\n");
-        assert_next_token!(Token::Literal(4..7, LiteralKind::Number(16)), "10h");
-        assert_next_token!(Token::NewLine(7..8), "\n");
-        assert_next_token!(Token::Literal(8..11, LiteralKind::Number(2)), "10b");
-        assert_next_token!(Token::NewLine(11..12), "\n");
-        assert_next_token!(Token::EndOfFile(12..12), "");
-
-        let mut lexer = Lexer::new(" 10 ");
-        assert_next_token!(Token::Whitespace(0..1), " ");
-        assert_next_token!(Token::Literal(1..3, LiteralKind::Number(10)), "10");
-        assert_next_token!(Token::Whitespace(3..4), " ");
-        assert_next_token!(Token::EndOfFile(4..4), "");
-
-        let mut lexer = Lexer::new(" 0x10 010H 010 0X10 0x ");
-        assert_next_token!(Token::Whitespace(0..1), " ");
-        assert_next_token!(Token::Literal(1..5, LiteralKind::Number(16)), "0x10");
-        assert_next_token!(Token::Whitespace(5..6), " ");
-        assert_next_token!(Token::Literal(6..10, LiteralKind::Number(16)), "010H");
-        assert_next_token!(Token::Whitespace(10..11), " ");
-        assert_next_token!(Token::Literal(11..14, LiteralKind::Number(10)), "010");
-        assert_next_token!(Token::Whitespace(14..15), " ");
-        assert_next_token!(Token::Literal(15..16, LiteralKind::Number(0)), "0");
-        assert_next_token!(Token::Identifier(16..19), "X10");
-        assert_next_token!(Token::Whitespace(19..20), " ");
-        assert_next_token!(Token::Literal(20..21, LiteralKind::Number(0)), "0");
-        assert_next_token!(Token::Identifier(21..22), "x");
-        assert_next_token!(Token::Whitespace(22..23), " ");
-        assert_next_token!(Token::EndOfFile(23..23), "");
+        assert_next_token!("0c8h", Token::Literal(4, LiteralKind::Number(200)), "0c8h");
+        assert_next_token!("0xc8", Token::Literal(4, LiteralKind::Number(200)), "0xc8");
     }
 
     #[test]
     fn identifier() {
-        let mut lexer = Lexer::new("test _te_st test123 1tst");
-        assert_next_token!(Token::Identifier(0..4), "test");
-        assert_next_token!(Token::Whitespace(4..5), " ");
-        assert_next_token!(Token::Identifier(5..11), "_te_st");
-        assert_next_token!(Token::Whitespace(11..12), " ");
-        assert_next_token!(Token::Identifier(12..19), "test123");
-        assert_next_token!(Token::Whitespace(19..20), " ");
-        assert_next_token!(Token::Literal(20..21, LiteralKind::Number(1)), "1");
-        assert_next_token!(Token::Identifier(21..24), "tst");
-        assert_next_token!(Token::EndOfFile(24..24), "");
+        assert_next_token!("test", Token::Identifier(4), "test");
+        assert_next_token!("test\n", Token::Identifier(4), "test");
+        assert_next_token!("_te_st", Token::Identifier(6), "_te_st");
+        assert_next_token!("_te_st\n", Token::Identifier(6), "_te_st");
+        assert_next_token!("test123", Token::Identifier(7), "test123");
+        assert_next_token!("test123\n", Token::Identifier(7), "test123");
+
+        assert_next_token!("1tst", Token::Literal(1, LiteralKind::Number(1)), "1");
     }
 }
