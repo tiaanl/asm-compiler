@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use crate::ast;
-use crate::ast::Line;
+use crate::ast::{Operator, Value};
 use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Cursor, Lexer, LiteralKind, PunctuationKind, Token};
 use std::fmt::{Display, Formatter};
@@ -48,7 +48,7 @@ pub trait LineConsumer<'a> {
 
 /// Allow lambdas to be passed as `LineConsumer`s
 impl<'a, T: FnMut(ast::Line)> LineConsumer<'a> for T {
-    fn consume(&mut self, line: Line) {
+    fn consume(&mut self, line: ast::Line) {
         self(line)
     }
 }
