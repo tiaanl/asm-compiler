@@ -155,8 +155,7 @@ impl<'a> Parser<'a> {
         self.token_pos = self.cursor.pos();
 
         loop {
-            let token = self.cursor.first_token();
-            self.cursor.advance(token.len());
+            let token = self.cursor.next_token();
             match token {
                 Token::Comment(_) | Token::Whitespace(_) => {
                     self.token_pos = self.cursor.pos();

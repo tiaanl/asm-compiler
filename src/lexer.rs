@@ -104,12 +104,10 @@ impl<'a> Cursor<'a> {
     }
 
     #[inline]
-    pub fn first_token(&self) -> Token {
-        Lexer::new(&self.source[self.pos..]).next_token()
-    }
-
-    pub fn advance(&mut self, offset: usize) {
-        self.pos += offset;
+    pub fn next_token(&mut self) -> Token {
+        let token = Lexer::new(&self.source[self.pos..]).next_token();
+        self.pos += token.len();
+        token
     }
 
     pub fn source_at(&self, start: usize, len: usize) -> &'a str {
@@ -434,8 +432,7 @@ mod tests {
             let mut cursor = Cursor::new($source);
             let mut lines = vec![];
             loop {
-                let token = cursor.first_token();
-                cursor.advance(token.len());
+                let token = cursor.next_token();
                 lines.push(token.clone());
                 if matches!(token, Token::EndOfFile(_)) {
                     break;
