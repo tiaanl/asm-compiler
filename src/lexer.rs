@@ -88,6 +88,39 @@ impl Token {
     }
 }
 
+pub struct Cursor<'a> {
+    source: &'a str,
+    pos: usize,
+}
+
+impl<'a> Cursor<'a> {
+    pub fn new(source: &'a str) -> Self {
+        Self { source, pos: 0 }
+    }
+
+    #[inline]
+    pub fn pos(&self) -> usize {
+        self.pos
+    }
+
+    #[inline]
+    pub fn first_token(&self) -> Token {
+        Lexer::new(&self.source[self.pos..]).next_token()
+    }
+
+    pub fn advance(&mut self, offset: usize) {
+        self.pos += offset;
+    }
+
+    pub fn source_at(&self, start: usize, len: usize) -> &'a str {
+        if start + len >= self.source.len() {
+            &self.source[start..]
+        } else {
+            &self.source[start..start + len]
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct Lexer<'a> {
     source: &'a str,
@@ -396,6 +429,21 @@ mod tests {
         };
     }
 
+    macro_rules! assert_sequence {
+        ($source:literal, $tokens:expr) => {{
+            let mut cursor = Cursor::new($source);
+            let mut lines = vec![];
+            loop {
+                let token = cursor.first_token();
+                cursor.advance(token.len());
+                lines.push(token.clone());
+                if matches!(token, Token::EndOfFile(_)) {
+                    break;
+                }
+            }
+        }};
+    }
+
     // #[test]
     // fn snake() {
     //     let source = include_str!("../samples/snake.asm");
@@ -413,6 +461,8 @@ mod tests {
     #[test]
     fn end_of_file() {
         assert_next_token!("", Token::EndOfFile(0), "");
+
+        assert_sequence!("test", vec![Token::Identifier(4), Token::EndOfFile(_)]);
     }
 
     #[test]

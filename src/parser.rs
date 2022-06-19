@@ -1,8 +1,9 @@
 #![allow(unused)]
 
 use crate::ast;
+use crate::ast::Line;
 use crate::instructions::{str_to_operation, Operation};
-use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
+use crate::lexer::{Cursor, Lexer, LiteralKind, PunctuationKind, Token};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -45,38 +46,16 @@ pub trait LineConsumer<'a> {
     fn consume(&mut self, line: ast::Line<'a>);
 }
 
+/// Allow lambdas to be passed as `LineConsumer`s
+impl<'a, T: FnMut(ast::Line<'a>)> LineConsumer<'a> for T {
+    fn consume(&mut self, line: Line<'a>) {
+        self(line)
+    }
+}
+
 #[inline]
 pub fn parse<'a>(source: &'a str, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
     Parser::new(source).parse(consumer)
-}
-
-struct Cursor<'a> {
-    source: &'a str,
-    pos: usize,
-}
-
-impl<'a> Cursor<'a> {
-    fn new(source: &'a str) -> Self {
-        Self { source, pos: 0 }
-    }
-
-    #[inline]
-    fn pos(&self) -> usize {
-        self.pos
-    }
-
-    #[inline]
-    fn first_token(&self) -> Token {
-        Lexer::new(&self.source[self.pos..]).next_token()
-    }
-
-    fn advance(&mut self, offset: usize) {
-        self.pos += offset;
-    }
-
-    fn source(&self, len: usize) -> &'a str {
-        &self.source[self.pos..self.pos + len]
-    }
 }
 
 struct Parser<'a> {
@@ -104,7 +83,7 @@ impl<'a> Parser<'a> {
     }
 
     fn token_source(&self) -> &'a str {
-        self.cursor.source(self.token.len())
+        self.cursor.source_at(self.token_pos, self.token.len())
     }
 
     fn parse(&mut self, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
@@ -531,13 +510,13 @@ impl<'a> Parser<'a> {
                 let literal = self.token_source();
                 if !terminated {
                     Err(self.expected("Unterminated string literal".to_owned()))
-                } else if literal.len() != 1 {
+                } else if literal.len() != 3 {
                     Err(self.expected("Only character literals allowed.".to_owned()))
                 } else {
                     // Consume the literal.
                     self.next_token();
 
-                    let value = literal.chars().next().unwrap() as i32;
+                    let value = literal[1..literal.len() - 1].chars().next().unwrap() as i32;
 
                     Ok(ast::Value::Constant(value))
                 }
@@ -564,96 +543,111 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
-    // #[test]
-    // fn blank_lines() {
-    //     let lines = parse("").unwrap();
-    //     assert_eq!(lines, vec![]);
-    //
-    //     let lines = parse("\n\n").unwrap();
-    //     assert_eq!(lines, vec![]);
-    // }
-    //
-    // #[test]
-    // fn label_and_instruction() {
-    //     let lines = parse("start hlt").unwrap();
-    //     assert_eq!(
-    //         lines,
-    //         vec![
-    //             ast::Line::Label(0..5, "start"),
-    //             ast::Line::Instruction(
-    //                 6..9,
-    //                 ast::Instruction {
-    //                     operation: Operation::Hlt,
-    //                     operands: ast::Operands::None(9..9),
-    //                 }
-    //             )
-    //         ]
-    //     );
-    // }
-    //
-    // #[test]
-    // fn multiple_labels() {
-    //     let lines = parse("start begin: begin2:hlt").unwrap();
-    //     assert_eq!(
-    //         lines,
-    //         vec![
-    //             ast::Line::Label(0..5, "start"),
-    //             ast::Line::Label(6..11, "begin"),
-    //             ast::Line::Label(13..19, "begin2"),
-    //             ast::Line::Instruction(
-    //                 20..23,
-    //                 ast::Instruction {
-    //                     operation: Operation::Hlt,
-    //                     operands: ast::Operands::None(23..23),
-    //                 }
-    //             )
-    //         ]
-    //     );
-    // }
-    //
-    // #[test]
-    // fn constants() {
-    //     let lines = parse("label equ 42").unwrap();
-    //     assert_eq!(
-    //         lines,
-    //         vec![
-    //             ast::Line::Label(0..5, "label"),
-    //             ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(42)))
-    //         ]
-    //     );
-    //
-    //     let lines =
-    //         parse("first equ 10 ; first value\n\nsecond equ 20 ; second value\n\n").unwrap();
-    //     assert_eq!(
-    //         lines,
-    //         vec![
-    //             ast::Line::Label(0..5, "first"),
-    //             ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(10))),
-    //             ast::Line::Label(28..34, "second"),
-    //             ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(20))),
-    //         ]
-    //     );
-    // }
-    //
-    // #[test]
-    // fn expressions() {
-    //     let mut parser = Parser::new("2 + 3 * 4 + 5");
-    //     let expr = parser.parse_expression().unwrap();
-    //     assert_eq!(
-    //         expr,
-    //         ast::Expression::InfixOperator(
-    //             ast::Operator::Add,
-    //             Box::new(ast::Expression::InfixOperator(
-    //                 ast::Operator::Add,
-    //                 Box::new(ast::Expression::Term(ast::Value::Constant(2))),
-    //                 Box::new(ast::Expression::InfixOperator(
-    //                     ast::Operator::Multiply,
-    //                     Box::new(ast::Expression::Term(ast::Value::Constant(3))),
-    //                     Box::new(ast::Expression::Term(ast::Value::Constant(4))),
-    //                 )),
-    //             )),
-    //             Box::new(ast::Expression::Term(ast::Value::Constant(5))),
-    //         )
-    //     );
-    // }
+    fn collect_lines(source: &str) -> Vec<ast::Line> {
+        let mut parser = Parser::new(source);
+        let mut lines = vec![];
+        parser.parse(&mut |line| lines.push(line)).unwrap();
+        lines
+    }
+
+    macro_rules! assert_parse {
+        ($source:literal, $lines:expr) => {{
+            assert_eq!(collect_lines($source), $lines);
+        }};
+    }
+
+    #[test]
+    fn blank_lines() {
+        assert_parse!("", vec![]);
+        assert_parse!("\n\n", vec![]);
+    }
+
+    #[test]
+    fn tokens() {
+        let mut parser = Parser::new("test label");
+        assert_eq!(parser.token, Token::Identifier(4));
+        parser.next_token();
+        assert_eq!(parser.token, Token::Identifier(5));
+        parser.next_token();
+        assert_eq!(parser.token, Token::EndOfFile(0));
+    }
+
+    #[test]
+    fn label_and_instruction() {
+        assert_parse!(
+            "start hlt",
+            vec![
+                ast::Line::Label(0..5, "start"),
+                ast::Line::Instruction(
+                    6..9,
+                    ast::Instruction {
+                        operation: Operation::Hlt,
+                        operands: ast::Operands::None(9..9),
+                    }
+                )
+            ]
+        );
+    }
+
+    #[test]
+    fn multiple_labels() {
+        assert_parse!(
+            "start begin: begin2:hlt",
+            vec![
+                ast::Line::Label(0..5, "start"),
+                ast::Line::Label(6..11, "begin"),
+                ast::Line::Label(13..19, "begin2"),
+                ast::Line::Instruction(
+                    20..23,
+                    ast::Instruction {
+                        operation: Operation::Hlt,
+                        operands: ast::Operands::None(23..23),
+                    },
+                ),
+            ]
+        );
+    }
+
+    #[test]
+    fn constants() {
+        assert_parse!(
+            "label equ 42",
+            vec![
+                ast::Line::Label(0..5, "label"),
+                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(42)))
+            ]
+        );
+
+        assert_parse!(
+            "first equ 10 ; first value\n\nsecond equ 20 ; second value\n\n",
+            vec![
+                ast::Line::Label(0..5, "first"),
+                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(10))),
+                ast::Line::Label(28..34, "second"),
+                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(20))),
+            ]
+        );
+    }
+
+    #[test]
+    fn expressions() {
+        let mut parser = Parser::new("2 + 3 * 4 + 5");
+        let expr = parser.parse_expression().unwrap();
+        assert_eq!(
+            expr,
+            ast::Expression::InfixOperator(
+                ast::Operator::Add,
+                Box::new(ast::Expression::InfixOperator(
+                    ast::Operator::Add,
+                    Box::new(ast::Expression::Term(ast::Value::Constant(2))),
+                    Box::new(ast::Expression::InfixOperator(
+                        ast::Operator::Multiply,
+                        Box::new(ast::Expression::Term(ast::Value::Constant(3))),
+                        Box::new(ast::Expression::Term(ast::Value::Constant(4))),
+                    )),
+                )),
+                Box::new(ast::Expression::Term(ast::Value::Constant(5))),
+            )
+        );
+    }
 }
