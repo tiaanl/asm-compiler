@@ -208,7 +208,7 @@ impl<'a> Display for Value {
         match self {
             Value::Constant(value) => write!(f, "{}", *value),
             Value::Label(label) => write!(f, "{}", *label),
-            Value::Register(register) => write!(f, "reg({})", *register),
+            Value::Register(register) => write!(f, "{}", *register),
         }
     }
 }
