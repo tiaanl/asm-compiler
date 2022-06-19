@@ -646,48 +646,48 @@ pub fn encode<'a>(instruction: &ast::Instruction) -> Result<Vec<u8>, EncodeError
 mod tests {
     use super::*;
 
-    #[test]
-    fn operand_types() {
-        assert_eq!(
-            OperandType::imm8,
-            operand_to_type(&ast::Operand::Immediate(ast::Expression::Term(
-                ast::Value::Constant(10)
-            )))
-        );
-
-        assert_eq!(
-            OperandType::imm16,
-            operand_to_type(&ast::Operand::Immediate(ast::Expression::Term(
-                ast::Value::Constant(256)
-            )))
-        );
-
-        assert_eq!(
-            OperandType::al,
-            operand_to_type(&ast::Operand::Register(ast::Register::Byte(
-                ast::ByteRegister::AL
-            )))
-        );
-
-        assert_eq!(
-            OperandType::ax,
-            operand_to_type(&ast::Operand::Register(ast::Register::Word(
-                ast::WordRegister::AX
-            )))
-        );
-
-        assert_eq!(
-            OperandType::reg8,
-            operand_to_type(&ast::Operand::Register(ast::Register::Byte(
-                ast::ByteRegister::DL
-            )))
-        );
-
-        assert_eq!(
-            OperandType::reg16,
-            operand_to_type(&ast::Operand::Register(ast::Register::Word(
-                ast::WordRegister::DX
-            )))
-        );
-    }
+    // #[test]
+    // fn operand_types() {
+    //     assert_eq!(
+    //         OperandType::imm8,
+    //         operand_to_type(&ast::Operand::Immediate(ast::Expression::Term(
+    //             ast::Value::Constant(10)
+    //         )))
+    //     );
+    //
+    //     assert_eq!(
+    //         OperandType::imm16,
+    //         operand_to_type(&ast::Operand::Immediate(ast::Expression::Term(
+    //             ast::Value::Constant(256)
+    //         )))
+    //     );
+    //
+    //     assert_eq!(
+    //         OperandType::al,
+    //         operand_to_type(&ast::Operand::Register(ast::Register::Byte(
+    //             ast::ByteRegister::AL
+    //         )))
+    //     );
+    //
+    //     assert_eq!(
+    //         OperandType::ax,
+    //         operand_to_type(&ast::Operand::Register(ast::Register::Word(
+    //             ast::WordRegister::AX
+    //         )))
+    //     );
+    //
+    //     assert_eq!(
+    //         OperandType::reg8,
+    //         operand_to_type(&ast::Operand::Register(ast::Register::Byte(
+    //             ast::ByteRegister::DL
+    //         )))
+    //     );
+    //
+    //     assert_eq!(
+    //         OperandType::reg16,
+    //         operand_to_type(&ast::Operand::Register(ast::Register::Word(
+    //             ast::WordRegister::DX
+    //         )))
+    //     );
+    // }
 }

@@ -1,6 +1,6 @@
-use crate::ast;
 use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Lexer, LiteralKind, PunctuationKind, Token};
+use crate::{ast, Span};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -49,7 +49,8 @@ pub fn parse<'a>(source: &'a str, consumer: &mut impl LineConsumer<'a>) -> Resul
 }
 
 struct Parser<'a> {
-    lexer: Lexer<'a>,
+    source: &'a str,
+    source_pos: usize,
 
     /// The position of the current token.
     token_pos: usize,
@@ -61,15 +62,20 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(source: &'a str) -> Self {
         let mut parser = Self {
-            lexer: Lexer::new(source),
+            source,
+            source_pos: 0,
             token_pos: 0,
-            token: Token::EndOfFile(0..0),
+            token: Token::EndOfFile(0),
         };
 
         // Initialize the current token with the first token that we can fetch from the lexer.
         parser.next_token();
 
         parser
+    }
+
+    fn token_source(&self) -> &'a str {
+        &self.source[self.token_pos..self.token_pos + self.token.len()]
     }
 
     fn parse(&mut self, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
@@ -81,7 +87,7 @@ impl<'a> Parser<'a> {
                 }
 
                 Token::Identifier(ref span) => {
-                    let identifier = self.lexer.source_at(span);
+                    let identifier = self.token_source();
                     if let Some(operation) = str_to_operation(identifier) {
                         let instruction = self.parse_instruction(operation)?;
                         consumer.consume(instruction);
@@ -127,7 +133,7 @@ impl<'a> Parser<'a> {
                 _ => {
                     return Err(self.expected(format!(
                         "Identifier or label expected, found {}",
-                        FoundToken(self.token.clone(), self.lexer.source_at(self.token.span())),
+                        FoundToken(self.token.clone(), self.token_source()),
                     )))
                 }
             }
@@ -138,13 +144,14 @@ impl<'a> Parser<'a> {
 
     fn next_token(&mut self) {
         // Store the position of the lexer to that we know where the token we are consuming starts.
-        self.token_pos = self.lexer.pos();
+        self.token_pos = self.source_pos;
 
         loop {
-            let token = self.lexer.next_token();
+            let token = Lexer::new(&self.source[self.source_pos..]).next_token();
+            self.source_pos += token.len();
             match token {
                 Token::Comment(_) | Token::Whitespace(_) => {
-                    self.token_pos = self.lexer.pos();
+                    self.token_pos = self.source_pos;
                     continue;
                 }
                 _ => {
@@ -169,10 +176,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_label(&mut self, name: &'a str) -> Result<ast::Line<'a>, ParserError> {
-        let start = self.token.span().start;
+        let start = self.token_pos;
 
         // We only capture the label part.
-        let end = self.token.span().end;
+        let end = self.token_pos + self.token.len();
 
         // Consume the token that holds the label.
         self.next_token();
@@ -191,14 +198,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_instruction(&mut self, operation: Operation) -> Result<ast::Line<'a>, ParserError> {
-        let start = self.token.span().start;
+        let start = self.token_pos;
 
         // Consume the operation.
         self.next_token();
 
         let operands = self.parse_operands()?;
 
-        let end = self.token.span().end;
+        let end = self.token_pos + self.token.len();
 
         self.require_new_line()?;
 
@@ -212,16 +219,18 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_operands(&mut self) -> Result<ast::Operands, ParserError> {
-        let start = self.token.span().start;
+        let start = self.token_pos;
 
         if matches!(self.token, Token::NewLine(_) | Token::EndOfFile(_)) {
-            Ok(ast::Operands::None(start..self.token.span().end))
+            Ok(ast::Operands::None(
+                start..self.token_pos + self.token.len(),
+            ))
         } else {
             let destination = self.parse_operand(None)?;
 
             match self.token {
                 Token::NewLine(_) | Token::EndOfFile(_) => Ok(ast::Operands::Destination(
-                    start..self.token.span().end,
+                    start..self.token_pos + self.token.len(),
                     destination,
                 )),
                 Token::Punctuation(_, PunctuationKind::Comma) => {
@@ -229,7 +238,7 @@ impl<'a> Parser<'a> {
                     let source = self.parse_operand(None)?;
 
                     Ok(ast::Operands::DestinationAndSource(
-                        start..self.token.span().end,
+                        start..self.token_pos + self.token.len(),
                         destination,
                         source,
                     ))
@@ -251,7 +260,7 @@ impl<'a> Parser<'a> {
             }
 
             Token::Identifier(ref span) => {
-                let identifier = self.lexer.source_at(span);
+                let identifier = self.token_source();
                 if let Some(register) = ast::Register::from_str(identifier) {
                     self.next_token();
                     Ok(ast::Operand::Register(register))
@@ -286,7 +295,7 @@ impl<'a> Parser<'a> {
 
         let expression = match self.token {
             Token::Identifier(ref span) => {
-                let identifier = self.lexer.source_at(span);
+                let identifier = self.token_source();
                 // If the first identifier is a segment, then we have an override.
                 if let Some(segment) = ast::Segment::from_str(identifier) {
                     segment_override = Some(segment);
@@ -351,7 +360,7 @@ impl<'a> Parser<'a> {
                 }
 
                 Token::Literal(ref span, LiteralKind::String(_)) => {
-                    let source = self.lexer.source_at(span);
+                    let source = self.token_source();
                     self.next_token();
                     for b in source.as_bytes() {
                         data.push(*b);
@@ -490,7 +499,7 @@ impl<'a> Parser<'a> {
             }
 
             Token::Literal(ref span, LiteralKind::String(terminated)) => {
-                let literal = self.lexer.source_at(span);
+                let literal = self.token_source();
                 if !terminated {
                     Err(self.expected("Unterminated string literal".to_owned()))
                 } else if literal.len() != 1 {
@@ -506,7 +515,7 @@ impl<'a> Parser<'a> {
             }
 
             Token::Identifier(ref span) => {
-                let identifier = self.lexer.source_at(span);
+                let identifier = self.token_source();
 
                 self.next_token();
 
