@@ -336,18 +336,18 @@ impl<'a> Display for Instruction {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub enum Line<'a> {
-    Label(Span, &'a str),
+pub enum Line {
+    Label(Span, String),
     Instruction(Span, Instruction),
     Data(Vec<u8>),
     Constant(Expression),
     Times(Expression),
 }
 
-impl<'a> Display for Line<'a> {
+impl<'a> Display for Line {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Line::Label(_, name) => write!(f, "{}:", name),
+            Line::Label(_, label) => write!(f, "{}:", label),
             Line::Instruction(_, instruction) => write!(f, "    {}", instruction),
             Line::Data(data) => write!(f, "    {:?}", data),
             Line::Constant(value) => write!(f, "    equ {}", value),
@@ -358,6 +358,6 @@ impl<'a> Display for Line<'a> {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Block<'a> {
-    pub lines: Vec<Line<'a>>,
+    pub lines: Vec<Line>,
     pub labels: HashMap<&'a str, usize>,
 }

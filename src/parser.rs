@@ -43,12 +43,12 @@ impl<'a> Display for FoundToken<'a> {
 }
 
 pub trait LineConsumer<'a> {
-    fn consume(&mut self, line: ast::Line<'a>);
+    fn consume(&mut self, line: ast::Line);
 }
 
 /// Allow lambdas to be passed as `LineConsumer`s
-impl<'a, T: FnMut(ast::Line<'a>)> LineConsumer<'a> for T {
-    fn consume(&mut self, line: Line<'a>) {
+impl<'a, T: FnMut(ast::Line)> LineConsumer<'a> for T {
+    fn consume(&mut self, line: Line) {
         self(line)
     }
 }
@@ -182,7 +182,7 @@ impl<'a> Parser<'a> {
         }
     }
 
-    fn parse_label(&mut self, name: &'a str) -> Result<ast::Line<'a>, ParserError> {
+    fn parse_label(&mut self, name: &'a str) -> Result<ast::Line, ParserError> {
         let start = self.token_pos;
 
         // We only capture the label part.
@@ -201,10 +201,10 @@ impl<'a> Parser<'a> {
             self.next_token();
         }
 
-        Ok(ast::Line::Label(start..end, name))
+        Ok(ast::Line::Label(start..end, name.to_owned()))
     }
 
-    fn parse_instruction(&mut self, operation: Operation) -> Result<ast::Line<'a>, ParserError> {
+    fn parse_instruction(&mut self, operation: Operation) -> Result<ast::Line, ParserError> {
         let start = self.token_pos;
 
         // Consume the operation.
@@ -338,7 +338,7 @@ impl<'a> Parser<'a> {
         ))
     }
 
-    fn parse_equ(&mut self) -> Result<ast::Line<'a>, ParserError> {
+    fn parse_equ(&mut self) -> Result<ast::Line, ParserError> {
         debug_assert!(matches!(self.token, Token::Identifier(_)));
 
         // Consume the "equ" keyword.
@@ -351,7 +351,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Line::Constant(expression))
     }
 
-    fn parse_data<T>(&mut self) -> Result<ast::Line<'a>, ParserError> {
+    fn parse_data<T>(&mut self) -> Result<ast::Line, ParserError> {
         debug_assert!(matches!(self.token, Token::Identifier(_)));
 
         // Consume the "Dx" keyword.
@@ -390,7 +390,7 @@ impl<'a> Parser<'a> {
         Ok(ast::Line::Data(data))
     }
 
-    fn parse_times(&mut self) -> Result<ast::Line<'a>, ParserError> {
+    fn parse_times(&mut self) -> Result<ast::Line, ParserError> {
         self.next_token();
 
         let expression = self.parse_expression()?;
@@ -576,7 +576,7 @@ mod tests {
         assert_parse!(
             "start hlt",
             vec![
-                ast::Line::Label(0..5, "start"),
+                ast::Line::Label(0..5, "start".to_owned()),
                 ast::Line::Instruction(
                     6..9,
                     ast::Instruction {
@@ -593,9 +593,9 @@ mod tests {
         assert_parse!(
             "start begin: begin2:hlt",
             vec![
-                ast::Line::Label(0..5, "start"),
-                ast::Line::Label(6..11, "begin"),
-                ast::Line::Label(13..19, "begin2"),
+                ast::Line::Label(0..5, "start".to_owned()),
+                ast::Line::Label(6..11, "begin".to_owned()),
+                ast::Line::Label(13..19, "begin2".to_owned()),
                 ast::Line::Instruction(
                     20..23,
                     ast::Instruction {
@@ -612,7 +612,7 @@ mod tests {
         assert_parse!(
             "label equ 42",
             vec![
-                ast::Line::Label(0..5, "label"),
+                ast::Line::Label(0..5, "label".to_owned()),
                 ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(42)))
             ]
         );
@@ -620,9 +620,9 @@ mod tests {
         assert_parse!(
             "first equ 10 ; first value\n\nsecond equ 20 ; second value\n\n",
             vec![
-                ast::Line::Label(0..5, "first"),
+                ast::Line::Label(0..5, "first".to_owned()),
                 ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(10))),
-                ast::Line::Label(28..34, "second"),
+                ast::Line::Label(28..34, "second".to_owned()),
                 ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(20))),
             ]
         );

@@ -7,6 +7,7 @@ mod parser;
 
 use crate::compiler::Compiler;
 use crate::lexer::Span;
+use crate::parser::LineConsumer;
 use clap::Parser as ClapParser;
 
 fn print_source_pos(source: &str, span: &Span, path: Option<&str>) {
@@ -55,9 +56,15 @@ fn main() {
     let source = std::fs::read_to_string(&args.source).unwrap();
     let source = source.as_str();
 
-    let mut compiler = Compiler::new(vec![]);
+    let mut compiler = Compiler::default();
 
-    if let Err(err) = parser::parse(source, &mut compiler) {
+    if let Err(err) = parser::parse(source, &mut |line| {
+        if args.syntax_only {
+            println!("{}", &line);
+        }
+
+        compiler.consume(line)
+    }) {
         match err {
             parser::ParserError::Expected(pos, err) => {
                 eprintln!("Error: {}", err);
@@ -69,25 +76,17 @@ fn main() {
         return;
     }
 
-    println!("{:?}", compiler);
+    if args.syntax_only {
+        return;
+    }
 
-    // if args.syntax_only {
-    //     for line in &lines {
-    //         println!("{}", line);
-    //     }
-    // } else {
-    //     let mut compiler = Compiler::new(lines);
-    //     match compiler.compile() {
-    //         Ok(bytes) => {
-    //             for c in bytes {
-    //                 print!("{:02x} ", c);
-    //             }
-    //             println!();
-    //         }
-    //         Err(err) => {
-    //             eprintln!("{}", err);
-    //             print_source_pos(source, err.span(), Some(args.source.as_str()))
-    //         }
-    //     }
-    // }
+    match compiler.compile() {
+        Ok(_) => {
+            println!("DONE");
+        }
+        Err(err) => {
+            eprintln!("{}", err);
+            print_source_pos(source, err.span(), Some(args.source.as_str()))
+        }
+    }
 }

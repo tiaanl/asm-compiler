@@ -1,14 +1,14 @@
 #![allow(unused)]
 
 use crate::ast;
-use crate::ast::Line;
+use crate::ast::{Expression, Line, Operands, Operator, Value};
 use crate::encoder::EncodeError;
 use crate::lexer::Span;
 use crate::parser::LineConsumer;
 use std::collections::HashMap;
 use std::fmt::Formatter;
 
-impl<'a> ast::Line<'a> {
+impl<'a> ast::Line {
     fn size_in_bytes(&self) -> Result<u32, EncodeError> {
         match self {
             ast::Line::Instruction(_, instruction) => crate::encoder::size_in_bytes(instruction),
@@ -57,28 +57,28 @@ impl CompilerError {
 
 #[derive(Default)]
 pub struct CompilerSession<'a> {
-    pub lines: Vec<ast::Line<'a>>,
+    pub lines: Vec<ast::Line>,
     pub labels: HashMap<&'a str, usize>,
 }
 
-#[derive(Debug)]
-pub struct Compiler<'a> {
-    lines: Vec<ast::Line<'a>>,
-    labels: HashMap<&'a str, usize>,
+#[derive(Debug, Default)]
+pub struct Compiler {
+    lines: Vec<ast::Line>,
+    labels: HashMap<String, usize>,
 }
 
-impl<'a> LineConsumer<'a> for Compiler<'a> {
-    fn consume(&mut self, line: Line<'a>) {
+impl<'a> LineConsumer<'a> for Compiler {
+    fn consume(&mut self, line: Line) {
         self.lines.push(line);
     }
 }
 
 #[allow(dead_code)]
 #[derive(Debug)]
-struct Output<'a, 'b> {
+struct Output {
     address: u32,
     bytes: Vec<u8>,
-    line: &'b ast::Line<'a>,
+    line_num: usize,
 }
 
 fn encode_instruction(
@@ -91,76 +91,51 @@ fn encode_instruction(
     }
 }
 
-impl<'a> Compiler<'a> {
-    pub fn new(lines: Vec<ast::Line<'a>>) -> Self {
-        Self {
-            lines,
-            labels: HashMap::new(),
-        }
-    }
-
-    pub fn compile(&mut self) -> Result<Vec<u8>, CompilerError> {
-        let mut outputs: Vec<Output<'a, '_>> = vec![];
+impl Compiler {
+    pub fn compile(&mut self) -> Result<(), CompilerError> {
+        let mut outputs: Vec<Output> = vec![];
 
         let mut address = 0;
-        for line in &self.lines {
+        for (line_num, line) in self.lines.iter().enumerate() {
             match line {
                 ast::Line::Label(_, label) => {
-                    self.labels.insert(label, outputs.len());
+                    self.labels.insert(label.clone(), outputs.len());
                 }
+
                 ast::Line::Instruction(ref span, instruction) => outputs.push(Output {
                     address,
                     bytes: vec![],
-                    line,
+                    line_num,
                 }),
+
                 line @ ast::Line::Data(data) => outputs.push(Output {
                     address,
                     bytes: data.clone(),
-                    line,
+                    line_num,
                 }),
+
                 ast::Line::Constant(_) => {}
+
                 line @ ast::Line::Times(_) => outputs.push(Output {
                     address,
                     bytes: vec![],
-                    line,
+                    line_num,
                 }),
             }
-            address += line.size_in_bytes()?;
+
+            //address += line.size_in_bytes()?;
         }
 
-        Ok(vec![])
-    }
+        let mut lines = unsafe {
+            &mut *std::ptr::slice_from_raw_parts_mut(self.lines.as_mut_ptr(), self.lines.len())
+        };
 
-    fn evaluate_instruction(
-        &self,
-        instruction: &mut ast::Instruction,
-    ) -> Result<(), CompilerError> {
-        self.evaluate_operands(&mut instruction.operands)
-    }
-
-    fn evaluate_operands(&self, operands: &mut ast::Operands) -> Result<(), CompilerError> {
-        match operands {
-            ast::Operands::None(_) => Ok(()),
-            ast::Operands::Destination(span, destination) => self.evaluate_operand(destination),
-            ast::Operands::DestinationAndSource(span, destination, source) => {
-                self.evaluate_operand(source)?;
-                self.evaluate_operand(destination)?;
-                Ok(())
+        for (line_num, line) in lines.iter_mut().enumerate() {
+            if let ast::Line::Instruction(_, ast::Instruction { operands, .. }) = line {
+                // Process the line.
             }
         }
-    }
 
-    fn evaluate_operand(&self, operand: &mut ast::Operand) -> Result<(), CompilerError> {
-        match operand {
-            ast::Operand::Immediate(expr) => self.evaluate_expression(expr),
-            ast::Operand::Address(_, expr, _) => self.evaluate_expression(expr),
-            _ => Ok(()),
-        }
-    }
-
-    fn evaluate_expression(&self, expression: &mut ast::Expression) -> Result<(), CompilerError> {
-        match expression {
-            _ => todo!(),
-        }
+        Ok(())
     }
 }
