@@ -8,19 +8,6 @@ use crate::parser::LineConsumer;
 use std::collections::HashMap;
 use std::fmt::Formatter;
 
-impl<'a> ast::Line {
-    fn size_in_bytes(&self) -> Result<u32, EncodeError> {
-        match self {
-            ast::Line::Instruction(_, instruction) => crate::encoder::size_in_bytes(instruction),
-            ast::Line::Data(data) => Ok(data.len() as u32),
-            ast::Line::Times(_) => todo!(),
-
-            // Other line types does not take up any bytes.
-            _ => Ok(0),
-        }
-    }
-}
-
 #[derive(Debug)]
 pub enum CompilerError {
     EncodeError(EncodeError),

@@ -291,7 +291,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Result<ast::Expression, ParserError> {
-        self.parse_expression_with_binding_power(0)
+        self.parse_expression_with_precedence(0)
     }
 
     fn parse_memory_operand(
@@ -420,29 +420,29 @@ impl Token {
 }
 
 impl<'a> Parser<'a> {
-    fn prefix_binding_power(operator: ast::Operator) -> Result<((), u8), ParserError> {
+    fn prefix_precedence(operator: ast::Operator) -> Result<((), u8), ParserError> {
         Ok(match operator {
             ast::Operator::Add | ast::Operator::Subtract => ((), 5),
             _ => return Err(ParserError::InvalidPrefixOperator),
         })
     }
 
-    fn infix_binding_power(operator: ast::Operator) -> (u8, u8) {
+    fn infix_precedence(operator: ast::Operator) -> (u8, u8) {
         match operator {
             ast::Operator::Add | ast::Operator::Subtract => (1, 2),
             ast::Operator::Multiply | ast::Operator::Divide => (3, 4),
         }
     }
 
-    fn parse_expression_with_binding_power(
+    fn parse_expression_with_precedence(
         &mut self,
-        binding_power: u8,
+        precedence: u8,
     ) -> Result<ast::Expression, ParserError> {
         let mut left = match &self.token {
             Token::Punctuation(_, PunctuationKind::OpenParenthesis) => {
                 self.next_token();
 
-                let left = self.parse_expression_with_binding_power(0)?;
+                let left = self.parse_expression_with_precedence(0)?;
 
                 if let Token::Punctuation(_, PunctuationKind::CloseParenthesis) = self.token {
                     self.next_token();
@@ -457,8 +457,8 @@ impl<'a> Parser<'a> {
 
             _ => {
                 if let Some(operator) = self.token.operator() {
-                    let ((), right_binding_power) = Self::prefix_binding_power(operator)?;
-                    let right = self.parse_expression_with_binding_power(right_binding_power)?;
+                    let ((), right_precedence) = Self::prefix_precedence(operator)?;
+                    let right = self.parse_expression_with_precedence(right_precedence)?;
                     ast::Expression::PrefixOperator(operator, Box::new(right))
                 } else {
                     ast::Expression::Term(self.parse_atom()?)
@@ -475,22 +475,18 @@ impl<'a> Parser<'a> {
                         operator
                     } else {
                         break;
-                        //return Err(
-                        //    self.expected(format!("Operator expected, found {:?}", self.token))
-                        //);
                     }
                 }
             };
 
-            let (left_binding_power, right_binding_power) = Parser::infix_binding_power(operator);
-
-            if left_binding_power < binding_power {
+            let (left_precedence, right_precedence) = Parser::infix_precedence(operator);
+            if left_precedence < precedence {
                 break;
             }
 
             self.next_token();
 
-            let right = self.parse_expression_with_binding_power(right_binding_power)?;
+            let right = self.parse_expression_with_precedence(right_precedence)?;
 
             left = ast::Expression::InfixOperator(operator, Box::new(left), Box::new(right));
         }
@@ -629,7 +625,7 @@ mod tests {
     }
 
     #[test]
-    fn expressions() {
+    fn expression_with_precedence() {
         let mut parser = Parser::new("2 + 3 * 4 + 5");
         let expr = parser.parse_expression().unwrap();
         assert_eq!(
