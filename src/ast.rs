@@ -1,33 +1,31 @@
 use crate::instructions::Operation;
 use crate::lexer::Span;
-use std::collections::HashMap;
 use std::fmt::{Display, Formatter};
 
-#[allow(clippy::upper_case_acronyms)]
-#[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum ByteRegister {
-    AL = 0,
-    CL = 1,
-    DL = 2,
-    BL = 3,
-    AH = 4,
-    CH = 5,
-    DH = 6,
-    BH = 7,
+    Al = 0,
+    Cl = 1,
+    Dl = 2,
+    Bl = 3,
+    Ah = 4,
+    Ch = 5,
+    Dh = 6,
+    Bh = 7,
 }
 
 impl Display for ByteRegister {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            ByteRegister::AL => write!(f, "AL"),
-            ByteRegister::AH => write!(f, "AH"),
-            ByteRegister::CL => write!(f, "CL"),
-            ByteRegister::CH => write!(f, "CH"),
-            ByteRegister::DL => write!(f, "DL"),
-            ByteRegister::DH => write!(f, "DH"),
-            ByteRegister::BL => write!(f, "BL"),
-            ByteRegister::BH => write!(f, "BH"),
+            ByteRegister::Al => write!(f, "AL"),
+            ByteRegister::Ah => write!(f, "AH"),
+            ByteRegister::Cl => write!(f, "CL"),
+            ByteRegister::Ch => write!(f, "CH"),
+            ByteRegister::Dl => write!(f, "DL"),
+            ByteRegister::Dh => write!(f, "DH"),
+            ByteRegister::Bl => write!(f, "BL"),
+            ByteRegister::Bh => write!(f, "BH"),
         }
     }
 }
@@ -35,49 +33,49 @@ impl Display for ByteRegister {
 impl ByteRegister {
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s.to_lowercase().as_str() {
-            "al" => Self::AL,
-            "ah" => Self::AH,
-            "cl" => Self::CL,
-            "ch" => Self::CH,
-            "dl" => Self::DL,
-            "dh" => Self::DH,
-            "bl" => Self::BL,
-            "bh" => Self::BH,
+            "al" => Self::Al,
+            "ah" => Self::Ah,
+            "cl" => Self::Cl,
+            "ch" => Self::Ch,
+            "dl" => Self::Dl,
+            "dh" => Self::Dh,
+            "bl" => Self::Bl,
+            "bh" => Self::Bh,
 
             _ => return None,
         })
     }
 
+    #[inline]
     pub fn encoding(&self) -> u8 {
         self.clone() as u8
     }
 }
 
-#[allow(clippy::upper_case_acronyms)]
-#[repr(u8)]
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[repr(u8)]
 pub enum WordRegister {
-    AX = 0,
-    CX = 1,
-    DX = 2,
-    BX = 3,
-    SP = 4,
-    BP = 5,
-    SI = 6,
-    DI = 7,
+    Ax = 0,
+    Cx = 1,
+    Dx = 2,
+    Bx = 3,
+    Sp = 4,
+    Bp = 5,
+    Si = 6,
+    Di = 7,
 }
 
 impl Display for WordRegister {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            WordRegister::AX => write!(f, "AX"),
-            WordRegister::CX => write!(f, "CX"),
-            WordRegister::DX => write!(f, "DX"),
-            WordRegister::BX => write!(f, "BX"),
-            WordRegister::SP => write!(f, "SP"),
-            WordRegister::BP => write!(f, "BP"),
-            WordRegister::SI => write!(f, "SI"),
-            WordRegister::DI => write!(f, "DI"),
+            WordRegister::Ax => write!(f, "AX"),
+            WordRegister::Cx => write!(f, "CX"),
+            WordRegister::Dx => write!(f, "DX"),
+            WordRegister::Bx => write!(f, "BX"),
+            WordRegister::Sp => write!(f, "SP"),
+            WordRegister::Bp => write!(f, "BP"),
+            WordRegister::Si => write!(f, "SI"),
+            WordRegister::Di => write!(f, "DI"),
         }
     }
 }
@@ -85,25 +83,25 @@ impl Display for WordRegister {
 impl WordRegister {
     pub fn from_str(s: &str) -> Option<Self> {
         Some(match s.to_lowercase().as_str() {
-            "ax" => Self::AX,
-            "cx" => Self::CX,
-            "dx" => Self::DX,
-            "bx" => Self::BX,
-            "sp" => Self::SP,
-            "bp" => Self::BP,
-            "si" => Self::SI,
-            "di" => Self::DI,
+            "ax" => Self::Ax,
+            "cx" => Self::Cx,
+            "dx" => Self::Dx,
+            "bx" => Self::Bx,
+            "sp" => Self::Sp,
+            "bp" => Self::Bp,
+            "si" => Self::Si,
+            "di" => Self::Di,
 
             _ => return None,
         })
     }
 
+    #[inline]
     pub fn encoding(&self) -> u8 {
         self.clone() as u8
     }
 }
 
-#[allow(clippy::upper_case_acronyms)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Register {
     Byte(ByteRegister),
@@ -128,6 +126,7 @@ impl Register {
         }
     }
 
+    #[inline]
     pub fn encoding(&self) -> u8 {
         match self {
             Register::Byte(r) => r.encoding(),
@@ -166,6 +165,7 @@ impl Segment {
         }
     }
 
+    #[inline]
     pub fn encoding(&self) -> u8 {
         self.clone() as u8
     }
@@ -265,7 +265,7 @@ pub enum Operand {
 impl<'a> Display for Operand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Operand::Immediate(expr) => write!(f, "{}", expr),
+            Operand::Immediate(expr) => expr.fmt(f),
 
             Operand::Address(data_size, expr, segment) => {
                 if let Some(data_size) = data_size {
@@ -277,14 +277,14 @@ impl<'a> Display for Operand {
                     write!(f, "{}:", segment)?;
                 }
 
-                write!(f, "{}", expr)?;
+                expr.fmt(f)?;
 
                 write!(f, "]")
             }
 
-            Operand::Register(register) => write!(f, "{}", register),
+            Operand::Register(register) => register.fmt(f),
 
-            Operand::Segment(segment) => write!(f, "{}", segment),
+            Operand::Segment(segment) => segment.fmt(f),
         }
     }
 }
@@ -297,7 +297,6 @@ pub enum Operands {
 }
 
 impl<'a> Operands {
-    #[allow(unused)]
     pub fn span(&self) -> &Span {
         match self {
             Operands::None(span)
@@ -354,10 +353,4 @@ impl<'a> Display for Line {
             Line::Times(expression) => write!(f, "    times {}", expression),
         }
     }
-}
-
-#[derive(Debug, PartialEq, Eq)]
-pub struct Block<'a> {
-    pub lines: Vec<Line>,
-    pub labels: HashMap<&'a str, usize>,
 }

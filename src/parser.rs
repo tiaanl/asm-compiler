@@ -1,9 +1,7 @@
-#![allow(unused)]
-
 use crate::ast;
-use crate::ast::{Expression, Operator, Value};
+use crate::ast::{Expression, Operator};
 use crate::instructions::{str_to_operation, Operation};
-use crate::lexer::{Cursor, Lexer, LiteralKind, PunctuationKind, Token};
+use crate::lexer::{Cursor, LiteralKind, PunctuationKind, Token};
 use std::fmt::{Display, Formatter};
 
 #[derive(Debug)]
@@ -128,7 +126,7 @@ impl<'a> Parser<'a> {
                     self.next_token();
                 }
 
-                Token::Identifier(ref span) => {
+                Token::Identifier(_) => {
                     let identifier = self.token_source();
                     if let Some(operation) = str_to_operation(identifier) {
                         let instruction = self.parse_instruction(operation)?;
@@ -300,7 +298,7 @@ impl<'a> Parser<'a> {
                 self.parse_memory_operand(data_size)
             }
 
-            Token::Identifier(ref span) => {
+            Token::Identifier(_) => {
                 let identifier = self.token_source();
                 if let Some(register) = ast::Register::from_str(identifier) {
                     self.next_token();
@@ -337,7 +335,7 @@ impl<'a> Parser<'a> {
         let mut segment_override = None;
 
         let expression = match self.token {
-            Token::Identifier(ref span) => {
+            Token::Identifier(_) => {
                 let identifier = self.token_source();
                 // If the first identifier is a segment, then we have an override.
                 if let Some(segment) = ast::Segment::from_str(identifier) {
@@ -403,7 +401,7 @@ impl<'a> Parser<'a> {
                     continue;
                 }
 
-                Token::Literal(ref span, LiteralKind::String(_)) => {
+                Token::Literal(_, LiteralKind::String(_)) => {
                     let source = self.token_source();
                     self.next_token();
                     for b in source.as_bytes() {
@@ -538,7 +536,7 @@ impl<'a> Parser<'a> {
                 Ok(ast::Value::Constant(value))
             }
 
-            Token::Literal(ref span, LiteralKind::String(terminated)) => {
+            Token::Literal(_, LiteralKind::String(terminated)) => {
                 let literal = self.token_source();
                 if !terminated {
                     Err(self.expected("Unterminated string literal".to_owned()))
@@ -554,7 +552,7 @@ impl<'a> Parser<'a> {
                 }
             }
 
-            Token::Identifier(ref span) => {
+            Token::Identifier(_) => {
                 let identifier = self.token_source();
 
                 self.next_token();

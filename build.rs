@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use inflector::Inflector;
 use nom::{
     branch::alt,
