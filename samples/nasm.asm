@@ -1,7 +1,7 @@
 main:
     ; constants
-    another_label value_1 equ 10
-    value_2 equ 20
+    another_label value_1 equ 10 + 5
+    value_2 equ 20 - 5
 
     stc
     clc

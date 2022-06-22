@@ -1,7 +1,7 @@
 #![allow(unused)]
 
 use crate::ast;
-use crate::ast::{Operator, Value};
+use crate::ast::{Expression, Operator, Value};
 use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Cursor, Lexer, LiteralKind, PunctuationKind, Token};
 use std::fmt::{Display, Formatter};
@@ -56,6 +56,40 @@ impl<'a, T: FnMut(ast::Line)> LineConsumer<'a> for T {
 #[inline]
 pub fn parse<'a>(source: &'a str, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
     Parser::new(source).parse(consumer)
+}
+
+impl Operator {
+    fn evaluate(&self, left: i32, right: i32) -> i32 {
+        match self {
+            Operator::Add => left + right,
+            Operator::Subtract => left - right,
+            Operator::Multiply => left * right,
+            Operator::Divide => left / right,
+        }
+    }
+}
+
+impl ast::Expression {
+    fn evaluate(&mut self) {
+        match self {
+            Expression::PrefixOperator(_, _) => {}
+            Expression::InfixOperator(operator, left, right) => {
+                left.evaluate();
+                right.evaluate();
+
+                if let (
+                    ast::Expression::Term(ast::Value::Constant(left_value)),
+                    ast::Expression::Term(ast::Value::Constant(right_value)),
+                ) = (left.as_ref(), right.as_ref())
+                {
+                    *self = ast::Expression::Term(ast::Value::Constant(
+                        operator.evaluate(*left_value, *right_value),
+                    ));
+                }
+            }
+            Expression::Term(_) => {}
+        }
+    }
 }
 
 struct Parser<'a> {
@@ -291,7 +325,9 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Result<ast::Expression, ParserError> {
-        self.parse_expression_with_precedence(0)
+        let mut expression = self.parse_expression_with_precedence(0)?;
+        expression.evaluate();
+        Ok(expression)
     }
 
     fn parse_memory_operand(
@@ -344,7 +380,8 @@ impl<'a> Parser<'a> {
         // Consume the "equ" keyword.
         self.next_token();
 
-        let expression = self.parse_expression()?;
+        let mut expression = self.parse_expression()?;
+        expression.evaluate();
 
         self.require_new_line()?;
 
@@ -624,25 +661,57 @@ mod tests {
         );
     }
 
+    macro_rules! expr_const {
+        ($value:literal) => {{
+            ast::Expression::Term(ast::Value::Constant($value))
+        }};
+    }
+
+    macro_rules! expr_label {
+        ($value:literal) => {{
+            ast::Expression::Term(ast::Value::Label($value.to_owned()))
+        }};
+    }
+
+    macro_rules! expr_infix {
+        ($operator:ident, $left:expr, $right:expr) => {{
+            ast::Expression::InfixOperator(
+                ast::Operator::$operator,
+                Box::new($left),
+                Box::new($right),
+            )
+        }};
+    }
+
     #[test]
     fn expression_with_precedence() {
         let mut parser = Parser::new("2 + 3 * 4 + 5");
         let expr = parser.parse_expression().unwrap();
+        assert_eq!(expr, expr_const!(19));
+    }
+
+    #[test]
+    fn expression_with_non_constants() {
+        let mut parser = Parser::new("2 + label * 4 + 5");
+        let expr = parser.parse_expression().unwrap();
         assert_eq!(
             expr,
-            ast::Expression::InfixOperator(
-                ast::Operator::Add,
-                Box::new(ast::Expression::InfixOperator(
-                    ast::Operator::Add,
-                    Box::new(ast::Expression::Term(ast::Value::Constant(2))),
-                    Box::new(ast::Expression::InfixOperator(
-                        ast::Operator::Multiply,
-                        Box::new(ast::Expression::Term(ast::Value::Constant(3))),
-                        Box::new(ast::Expression::Term(ast::Value::Constant(4))),
-                    )),
-                )),
-                Box::new(ast::Expression::Term(ast::Value::Constant(5))),
+            expr_infix!(
+                Add,
+                expr_infix!(
+                    Add,
+                    expr_const!(2),
+                    expr_infix!(Multiply, expr_label!("label"), expr_const!(4))
+                ),
+                expr_const!(5)
             )
         );
+    }
+
+    #[test]
+    fn expression_with_non_constants_and_constants() {
+        let mut parser = Parser::new("label + 2 * 3");
+        let expr = parser.parse_expression().unwrap();
+        assert_eq!(expr, expr_infix!(Add, expr_label!("label"), expr_const!(6)));
     }
 }
