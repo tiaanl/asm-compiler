@@ -2,6 +2,7 @@ use crate::ast;
 use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Cursor, LiteralKind, PunctuationKind, Token};
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 #[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
@@ -306,13 +307,13 @@ impl<'a> Parser<'a> {
 
             Token::Identifier(_) => {
                 let identifier = self.token_source();
-                if let Some(register) = ast::Register::from_str(identifier) {
+                if let Ok(register) = ast::Register::from_str(identifier) {
                     self.next_token();
                     Ok(ast::Operand::Register(start..self.last_token_end, register))
-                } else if let Some(segment) = ast::Segment::from_str(identifier) {
+                } else if let Ok(segment) = ast::Segment::from_str(identifier) {
                     self.next_token();
                     Ok(ast::Operand::Segment(start..self.last_token_end, segment))
-                } else if let Some(data_size) = ast::DataSize::from_str(identifier) {
+                } else if let Ok(data_size) = ast::DataSize::from_str(identifier) {
                     self.next_token();
                     self.parse_operand(Some(data_size))
                 } else {
@@ -359,7 +360,7 @@ impl<'a> Parser<'a> {
             Token::Identifier(_) => {
                 let identifier = self.token_source();
                 // If the first identifier is a segment, then we have an override.
-                if let Some(segment) = ast::Segment::from_str(identifier) {
+                if let Ok(segment) = ast::Segment::from_str(identifier) {
                     segment_override = Some(segment);
                     self.next_token();
 
@@ -604,7 +605,7 @@ impl<'a> Parser<'a> {
 
                 self.next_token();
 
-                if let Some(register) = ast::Register::from_str(identifier) {
+                if let Ok(register) = ast::Register::from_str(identifier) {
                     Ok(ast::Value::Register(register))
                 } else {
                     Ok(ast::Value::Label(identifier.to_owned()))

@@ -259,7 +259,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -296,7 +296,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -334,7 +334,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -413,7 +413,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -427,7 +427,7 @@ pub mod funcs {
             data: &InstructionData,
             output: &mut Vec<u8>,
         ) -> Result<(), EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+            todo!()
         }
 
         #[inline]
@@ -435,7 +435,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -449,7 +449,7 @@ pub mod funcs {
             data: &InstructionData,
             output: &mut Vec<u8>,
         ) -> Result<(), EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+            todo!()
         }
 
         #[inline]
@@ -457,7 +457,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -471,7 +471,7 @@ pub mod funcs {
             data: &InstructionData,
             output: &mut Vec<u8>,
         ) -> Result<(), EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+            todo!()
         }
 
         #[inline]
@@ -479,7 +479,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -501,7 +501,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 
@@ -515,7 +515,7 @@ pub mod funcs {
             data: &InstructionData,
             output: &mut Vec<u8>,
         ) -> Result<(), EncodeError> {
-            (|instruction: &ast::Instruction, data: &InstructionData| todo!())(instruction, data)
+            todo!()
         }
 
         #[inline]
@@ -523,7 +523,7 @@ pub mod funcs {
             instruction: &ast::Instruction,
             data: &InstructionData,
         ) -> Result<u32, EncodeError> {
-            (|_, _| todo!())(instruction, data)
+            todo!()
         }
     }
 }
@@ -531,43 +531,43 @@ pub mod funcs {
 impl<'a> ast::Operand {
     fn matches_operand_type(&self, operand_type: OperandType) -> bool {
         match self {
-            ast::Operand::Immediate(_, _) => match operand_type {
+            ast::Operand::Immediate(_, _) => matches!(
+                operand_type,
                 OperandType::one
-                | OperandType::imm
-                | OperandType::imm8
-                | OperandType::imm16
-                | OperandType::sbyteword
-                | OperandType::sbyteword16 => true,
-                _ => false,
-            },
-            ast::Operand::Address(_, _, _, _) => match operand_type {
+                    | OperandType::imm
+                    | OperandType::imm8
+                    | OperandType::imm16
+                    | OperandType::sbyteword
+                    | OperandType::sbyteword16
+            ),
+            ast::Operand::Address(_, _, _, _) => matches!(
+                operand_type,
                 OperandType::mem
-                | OperandType::_mem8
-                | OperandType::mem16
-                | OperandType::rm8
-                | OperandType::rm16 => true,
-                _ => false,
-            },
-            ast::Operand::Register(_, _) => match operand_type {
+                    | OperandType::_mem8
+                    | OperandType::mem16
+                    | OperandType::rm8
+                    | OperandType::rm16
+            ),
+            ast::Operand::Register(_, _) => matches!(
+                operand_type,
                 OperandType::al
-                | OperandType::ax
-                | OperandType::cl
-                | OperandType::cx
-                | OperandType::dx
-                | OperandType::reg8
-                | OperandType::reg16
-                | OperandType::rm8
-                | OperandType::rm16 => true,
-                _ => false,
-            },
-            ast::Operand::Segment(_, _) => match operand_type {
+                    | OperandType::ax
+                    | OperandType::cl
+                    | OperandType::cx
+                    | OperandType::dx
+                    | OperandType::reg8
+                    | OperandType::reg16
+                    | OperandType::rm8
+                    | OperandType::rm16
+            ),
+            ast::Operand::Segment(_, _) => matches!(
+                operand_type,
                 OperandType::es
-                | OperandType::cs
-                | OperandType::ss
-                | OperandType::ds
-                | OperandType::seg => true,
-                _ => false,
-            },
+                    | OperandType::cs
+                    | OperandType::ss
+                    | OperandType::ds
+                    | OperandType::seg
+            ),
         }
     }
 }
@@ -604,7 +604,7 @@ fn find_instruction_data_for(instruction: &ast::Instruction) -> Option<&'static 
     None
 }
 
-pub fn size_in_bytes<'a>(instruction: &ast::Instruction) -> Result<u32, EncodeError> {
+pub fn size_in_bytes(instruction: &ast::Instruction) -> Result<u32, EncodeError> {
     let data = match find_instruction_data_for(instruction) {
         Some(data) => data,
         None => {
@@ -621,7 +621,7 @@ pub fn size_in_bytes<'a>(instruction: &ast::Instruction) -> Result<u32, EncodeEr
         .unwrap())
 }
 
-pub fn encode<'a>(instruction: &ast::Instruction) -> Result<Vec<u8>, EncodeError> {
+pub fn encode(instruction: &ast::Instruction) -> Result<Vec<u8>, EncodeError> {
     let data = match find_instruction_data_for(instruction) {
         Some(data) => data,
         None => {

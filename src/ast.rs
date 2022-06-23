@@ -1,5 +1,6 @@
 use crate::instructions::Operation;
 use std::fmt::{Display, Formatter};
+use std::str::FromStr;
 
 pub type Span = std::ops::Range<usize>;
 
@@ -31,9 +32,11 @@ impl Display for ByteRegister {
     }
 }
 
-impl ByteRegister {
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s.to_lowercase().as_str() {
+impl FromStr for ByteRegister {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "al" => Self::Al,
             "ah" => Self::Ah,
             "cl" => Self::Cl,
@@ -43,10 +46,12 @@ impl ByteRegister {
             "bl" => Self::Bl,
             "bh" => Self::Bh,
 
-            _ => return None,
+            _ => return Err(()),
         })
     }
+}
 
+impl ByteRegister {
     #[inline]
     pub fn encoding(&self) -> u8 {
         self.clone() as u8
@@ -81,9 +86,11 @@ impl Display for WordRegister {
     }
 }
 
-impl WordRegister {
-    pub fn from_str(s: &str) -> Option<Self> {
-        Some(match s.to_lowercase().as_str() {
+impl FromStr for WordRegister {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
             "ax" => Self::Ax,
             "cx" => Self::Cx,
             "dx" => Self::Dx,
@@ -93,10 +100,12 @@ impl WordRegister {
             "si" => Self::Si,
             "di" => Self::Di,
 
-            _ => return None,
+            _ => return Err(()),
         })
     }
+}
 
+impl WordRegister {
     #[inline]
     pub fn encoding(&self) -> u8 {
         self.clone() as u8
@@ -118,15 +127,21 @@ impl Display for Register {
     }
 }
 
-impl Register {
-    pub fn from_str(s: &str) -> Option<Self> {
-        if let Some(byte_register) = ByteRegister::from_str(s) {
-            Some(Register::Byte(byte_register))
+impl FromStr for Register {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if let Ok(byte_register) = ByteRegister::from_str(s) {
+            Ok(Register::Byte(byte_register))
+        } else if let Ok(word_register) = WordRegister::from_str(s) {
+            Ok(Register::Word(word_register))
         } else {
-            WordRegister::from_str(s).map(Register::Word)
+            Err(())
         }
     }
+}
 
+impl Register {
     #[inline]
     pub fn encoding(&self) -> u8 {
         match self {
@@ -155,17 +170,21 @@ impl Display for Segment {
     }
 }
 
-impl Segment {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "es" => Some(Self::ES),
-            "cs" => Some(Self::CS),
-            "ss" => Some(Self::SS),
-            "ds" => Some(Self::DS),
-            _ => None,
-        }
-    }
+impl FromStr for Segment {
+    type Err = ();
 
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "es" => Self::ES,
+            "cs" => Self::CS,
+            "ss" => Self::SS,
+            "ds" => Self::DS,
+            _ => return Err(()),
+        })
+    }
+}
+
+impl Segment {
     #[inline]
     pub fn encoding(&self) -> u8 {
         self.clone() as u8
@@ -187,13 +206,15 @@ impl Display for DataSize {
     }
 }
 
-impl DataSize {
-    pub fn from_str(s: &str) -> Option<Self> {
-        match s.to_lowercase().as_str() {
-            "byte" => Some(Self::Byte),
-            "word" => Some(Self::Word),
-            _ => None,
-        }
+impl FromStr for DataSize {
+    type Err = ();
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        Ok(match s.to_lowercase().as_str() {
+            "byte" => Self::Byte,
+            "word" => Self::Word,
+            _ => return Err(()),
+        })
     }
 }
 
