@@ -257,18 +257,18 @@ impl<'a> Display for Expression {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum Operand {
-    Immediate(Expression),
-    Address(Option<DataSize>, Expression, Option<Segment>),
-    Register(Register),
-    Segment(Segment),
+    Immediate(Span, Expression),
+    Address(Span, Option<DataSize>, Expression, Option<Segment>),
+    Register(Span, Register),
+    Segment(Span, Segment),
 }
 
 impl<'a> Display for Operand {
     fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
         match self {
-            Operand::Immediate(expr) => expr.fmt(f),
+            Operand::Immediate(_, expr) => expr.fmt(f),
 
-            Operand::Address(data_size, expr, segment) => {
+            Operand::Address(_, data_size, expr, segment) => {
                 if let Some(data_size) = data_size {
                     write!(f, "{} ", data_size)?;
                 }
@@ -283,9 +283,9 @@ impl<'a> Display for Operand {
                 write!(f, "]")
             }
 
-            Operand::Register(register) => register.fmt(f),
+            Operand::Register(_, register) => register.fmt(f),
 
-            Operand::Segment(segment) => segment.fmt(f),
+            Operand::Segment(_, segment) => segment.fmt(f),
         }
     }
 }

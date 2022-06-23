@@ -250,7 +250,7 @@ impl<'a> Parser<'a> {
 
         let operands = self.parse_operands()?;
 
-        let end = self.token_start + self.token.len();
+        let end = self.last_token_end;
 
         self.require_new_line()?;
 
@@ -269,18 +269,21 @@ impl<'a> Parser<'a> {
                 self.last_token_end..self.last_token_end,
             ))
         } else {
+            let start = self.token_start;
+
             let destination = self.parse_operand(None)?;
 
             match self.token {
-                Token::NewLine(_) | Token::EndOfFile(_) => {
-                    Ok(ast::Operands::Destination(0..0, destination))
-                }
+                Token::NewLine(_) | Token::EndOfFile(_) => Ok(ast::Operands::Destination(
+                    start..self.last_token_end,
+                    destination,
+                )),
                 Token::Punctuation(_, PunctuationKind::Comma) => {
                     self.next_token();
                     let source = self.parse_operand(None)?;
 
                     Ok(ast::Operands::DestinationAndSource(
-                        0..0,
+                        start..self.last_token_end,
                         destination,
                         source,
                     ))
@@ -295,9 +298,9 @@ impl<'a> Parser<'a> {
         &mut self,
         data_size: Option<ast::DataSize>,
     ) -> Result<ast::Operand, ParserError> {
+        let start = self.token_start;
         match self.token {
             Token::Punctuation(_, PunctuationKind::OpenBracket) => {
-                self.next_token();
                 self.parse_memory_operand(data_size)
             }
 
@@ -305,22 +308,29 @@ impl<'a> Parser<'a> {
                 let identifier = self.token_source();
                 if let Some(register) = ast::Register::from_str(identifier) {
                     self.next_token();
-                    Ok(ast::Operand::Register(register))
+                    Ok(ast::Operand::Register(start..self.last_token_end, register))
                 } else if let Some(segment) = ast::Segment::from_str(identifier) {
                     self.next_token();
-                    Ok(ast::Operand::Segment(segment))
+                    Ok(ast::Operand::Segment(start..self.last_token_end, segment))
                 } else if let Some(data_size) = ast::DataSize::from_str(identifier) {
                     self.next_token();
                     self.parse_operand(Some(data_size))
                 } else {
                     let expression = self.parse_expression()?;
-                    Ok(ast::Operand::Immediate(expression))
+                    Ok(ast::Operand::Immediate(
+                        start..self.last_token_end,
+                        expression,
+                    ))
                 }
             }
 
             _ => {
+                let start = self.token_start;
                 let expression = self.parse_expression()?;
-                Ok(ast::Operand::Immediate(expression))
+                Ok(ast::Operand::Immediate(
+                    start..self.last_token_end,
+                    expression,
+                ))
             }
         }
     }
@@ -333,6 +343,16 @@ impl<'a> Parser<'a> {
         &mut self,
         data_size: Option<ast::DataSize>,
     ) -> Result<ast::Operand, ParserError> {
+        assert!(matches!(
+            self.token,
+            Token::Punctuation(_, PunctuationKind::OpenBracket)
+        ));
+
+        let start = self.token_start;
+
+        // Consume the opening bracket.
+        self.next_token();
+
         let mut segment_override = None;
 
         let expression = match self.token {
@@ -367,6 +387,7 @@ impl<'a> Parser<'a> {
         }
 
         Ok(ast::Operand::Address(
+            start..self.last_token_end,
             data_size,
             expression,
             segment_override,

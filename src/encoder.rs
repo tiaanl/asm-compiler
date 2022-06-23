@@ -27,19 +27,19 @@ impl Code {
     pub fn encode(&self, instruction: &ast::Instruction, output: &mut Vec<u8>) -> bool {
         match self {
             Code::ib => match &instruction.operands {
-                ast::Operands::Destination(_, ast::Operand::Immediate(_expr)) => {
+                ast::Operands::Destination(_, ast::Operand::Immediate(_, _expr)) => {
                     eprintln!("WARNING: dummy immediate");
                     output.push(0);
                     true
                 }
 
-                ast::Operands::DestinationAndSource(_, ast::Operand::Immediate(_expr), _) => {
+                ast::Operands::DestinationAndSource(_, ast::Operand::Immediate(_, _expr), _) => {
                     eprintln!("WARNING: dummy immediate");
                     output.push(0);
                     true
                 }
 
-                ast::Operands::DestinationAndSource(_, _, ast::Operand::Immediate(_expr)) => {
+                ast::Operands::DestinationAndSource(_, _, ast::Operand::Immediate(_, _expr)) => {
                     eprintln!("WARNING: dummy immediate");
                     output.push(0);
                     true
@@ -54,12 +54,12 @@ impl Code {
             }
 
             Code::plus_reg(byte) => match &instruction.operands {
-                ast::Operands::Destination(_, ast::Operand::Register(register)) => {
+                ast::Operands::Destination(_, ast::Operand::Register(_, register)) => {
                     output.push(byte.wrapping_add(register.encoding()));
                     true
                 }
 
-                ast::Operands::DestinationAndSource(_, ast::Operand::Register(register), _) => {
+                ast::Operands::DestinationAndSource(_, ast::Operand::Register(_, register), _) => {
                     output.push(byte.wrapping_add(register.encoding()));
                     true
                 }
@@ -70,8 +70,8 @@ impl Code {
             Code::mrm => match &instruction.operands {
                 ast::Operands::DestinationAndSource(
                     _,
-                    ast::Operand::Register(reg),
-                    ast::Operand::Register(mem),
+                    ast::Operand::Register(_, reg),
+                    ast::Operand::Register(_, mem),
                 ) => {
                     output.push(mod_reg_rm(0b11, reg.encoding(), mem.encoding()));
                     true
@@ -79,8 +79,8 @@ impl Code {
 
                 ast::Operands::DestinationAndSource(
                     _,
-                    ast::Operand::Register(reg),
-                    ast::Operand::Segment(seg),
+                    ast::Operand::Register(_, reg),
+                    ast::Operand::Segment(_, seg),
                 ) => {
                     output.push(mod_reg_rm(0b11, seg.encoding(), reg.encoding()));
                     true
@@ -88,8 +88,8 @@ impl Code {
 
                 ast::Operands::DestinationAndSource(
                     _,
-                    ast::Operand::Segment(reg),
-                    ast::Operand::Register(seg),
+                    ast::Operand::Segment(_, reg),
+                    ast::Operand::Register(_, seg),
                 ) => {
                     output.push(mod_reg_rm(0b11, reg.encoding(), seg.encoding()));
                     true
@@ -276,8 +276,8 @@ pub mod funcs {
                 Code::mrm => match &instruction.operands {
                     ast::Operands::DestinationAndSource(
                         _,
-                        ast::Operand::Address(_, _, _),
-                        ast::Operand::Register(_),
+                        ast::Operand::Address(_, _, _, _),
+                        ast::Operand::Register(_, _),
                     ) => {
                         todo!("mem reg")
                     }
@@ -315,8 +315,8 @@ pub mod funcs {
                 Code::mrm => match &instruction.operands {
                     ast::Operands::DestinationAndSource(
                         _,
-                        ast::Operand::Address(_, _, _),
-                        ast::Operand::Register(_),
+                        ast::Operand::Address(_, _, _, _),
+                        ast::Operand::Register(_, _),
                     ) => {
                         todo!("mem reg")
                     }
@@ -357,8 +357,8 @@ pub mod funcs {
                     Code::encoding(_encoding) => match &instruction.operands {
                         ast::Operands::DestinationAndSource(
                             _,
-                            ast::Operand::Address(_, _, _),
-                            ast::Operand::Immediate(_),
+                            ast::Operand::Address(_, _, _, _),
+                            ast::Operand::Immediate(_, _),
                         ) => {
                             todo!()
                         }
@@ -392,11 +392,11 @@ pub mod funcs {
         ) -> Result<(), EncodeError> {
             dbg!(data.codes);
             match &instruction.operands {
-                ast::Operands::DestinationAndSource(_, _, ast::Operand::Immediate(expr)) => {
+                ast::Operands::DestinationAndSource(_, _, ast::Operand::Immediate(_, expr)) => {
                     todo!()
                 }
 
-                ast::Operands::DestinationAndSource(_, _, ast::Operand::Address(_, expr, _)) => {
+                ast::Operands::DestinationAndSource(_, _, ast::Operand::Address(_, _, expr, _)) => {
                     // An address can be written as an immediate
                     output.push(0);
                     output.push(0);
@@ -531,7 +531,7 @@ pub mod funcs {
 impl<'a> ast::Operand {
     fn matches_operand_type(&self, operand_type: OperandType) -> bool {
         match self {
-            ast::Operand::Immediate(_) => match operand_type {
+            ast::Operand::Immediate(_, _) => match operand_type {
                 OperandType::one
                 | OperandType::imm
                 | OperandType::imm8
@@ -540,7 +540,7 @@ impl<'a> ast::Operand {
                 | OperandType::sbyteword16 => true,
                 _ => false,
             },
-            ast::Operand::Address(_, _, _) => match operand_type {
+            ast::Operand::Address(_, _, _, _) => match operand_type {
                 OperandType::mem
                 | OperandType::_mem8
                 | OperandType::mem16
@@ -548,7 +548,7 @@ impl<'a> ast::Operand {
                 | OperandType::rm16 => true,
                 _ => false,
             },
-            ast::Operand::Register(_) => match operand_type {
+            ast::Operand::Register(_, _) => match operand_type {
                 OperandType::al
                 | OperandType::ax
                 | OperandType::cl
@@ -560,7 +560,7 @@ impl<'a> ast::Operand {
                 | OperandType::rm16 => true,
                 _ => false,
             },
-            ast::Operand::Segment(_) => match operand_type {
+            ast::Operand::Segment(_, _) => match operand_type {
                 OperandType::es
                 | OperandType::cs
                 | OperandType::ss

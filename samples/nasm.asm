@@ -6,6 +6,8 @@ main:
     stc
     clc
 
+    int 0x10
+
     mov bx, data
     mov byte [bx + 1], value_1
 

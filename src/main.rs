@@ -5,6 +5,7 @@ mod instructions;
 mod lexer;
 mod parser;
 
+use crate::ast::{Line, Operand, Operands};
 use crate::compiler::Compiler;
 use crate::parser::LineConsumer;
 use clap::Parser as ClapParser;
@@ -35,7 +36,12 @@ fn print_source_pos(source: &str, span: &ast::Span, path: Option<&str>) {
     for _ in 0..column {
         print!(" ");
     }
-    for _ in span.start..span.end {
+    let end = if span.start == span.end {
+        span.end + 1
+    } else {
+        span.end
+    };
+    for _ in span.start..end {
         print!("^");
     }
     println!();
@@ -47,6 +53,9 @@ struct Args {
 
     #[clap(short, long)]
     syntax_only: bool,
+
+    #[clap(short, long)]
+    parse_only: bool,
 }
 
 fn main() {
@@ -60,9 +69,41 @@ fn main() {
     if let Err(err) = parser::parse(source, &mut |line| {
         if args.syntax_only {
             println!("{}", &line);
+        } else if args.parse_only {
+            let do_args = |operand: &Operand| match operand {
+                Operand::Immediate(span, _)
+                | Operand::Address(span, _, _, _)
+                | Operand::Register(span, _)
+                | Operand::Segment(span, _) => {
+                    print_source_pos(source, span, Some(args.source.as_str()))
+                }
+            };
+            match &line {
+                Line::Instruction(span, instruction) => {
+                    print_source_pos(source, span, Some(args.source.as_str()));
+                    match &instruction.operands {
+                        Operands::None(span) => {
+                            print_source_pos(source, span, Some(args.source.as_str()))
+                        }
+                        Operands::Destination(span, destination) => {
+                            print_source_pos(source, span, Some(args.source.as_str()));
+                            do_args(destination);
+                        }
+                        Operands::DestinationAndSource(span, destination, source_) => {
+                            print_source_pos(source, span, Some(args.source.as_str()));
+                            do_args(destination);
+                            do_args(source_);
+                        }
+                    }
+                }
+                Line::Label(span, _) | Line::Data(span, _) | Line::Constant(span, _) => {
+                    print_source_pos(source, span, Some(args.source.as_str()))
+                }
+                Line::Times(_) => {}
+            }
+        } else {
+            compiler.consume(line)
         }
-
-        compiler.consume(line)
     }) {
         match &err {
             parser::ParserError::Expected(span, err) => {
