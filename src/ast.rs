@@ -1,6 +1,7 @@
 use crate::instructions::Operation;
-use crate::lexer::Span;
 use std::fmt::{Display, Formatter};
+
+pub type Span = std::ops::Range<usize>;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[repr(u8)]
@@ -338,8 +339,8 @@ impl<'a> Display for Instruction {
 pub enum Line {
     Label(Span, String),
     Instruction(Span, Instruction),
-    Data(Vec<u8>),
-    Constant(Expression),
+    Data(Span, Vec<u8>),
+    Constant(Span, Expression),
     Times(Expression),
 }
 
@@ -348,8 +349,8 @@ impl<'a> Display for Line {
         match self {
             Line::Label(_, label) => write!(f, "{}:", label),
             Line::Instruction(_, instruction) => write!(f, "    {}", instruction),
-            Line::Data(data) => write!(f, "    {:?}", data),
-            Line::Constant(value) => write!(f, "    equ {}", value),
+            Line::Data(_, data) => write!(f, "    {:?}", data),
+            Line::Constant(_, value) => write!(f, "    equ {}", value),
             Line::Times(expression) => write!(f, "    times {}", expression),
         }
     }

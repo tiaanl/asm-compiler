@@ -1,5 +1,3 @@
-use std::ops::Range;
-
 #[repr(u8)]
 #[derive(Debug, Eq, Ord, PartialEq, PartialOrd)]
 enum Base {
@@ -46,20 +44,18 @@ pub enum LiteralKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PunctuationKind {
+    CloseBracket,
+    CloseParenthesis,
     Colon,
     Comma,
     Dot,
-    OpenBracket,
-    CloseBracket,
-    OpenParenthesis,
-    CloseParenthesis,
-    Plus,
-    Minus,
-    Star,
     ForwardSlash,
+    Minus,
+    OpenBracket,
+    OpenParenthesis,
+    Plus,
+    Star,
 }
-
-pub type Span = Range<usize>;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Token {

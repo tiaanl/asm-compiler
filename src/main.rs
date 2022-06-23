@@ -6,11 +6,10 @@ mod lexer;
 mod parser;
 
 use crate::compiler::Compiler;
-use crate::lexer::Span;
 use crate::parser::LineConsumer;
 use clap::Parser as ClapParser;
 
-fn print_source_pos(source: &str, span: &Span, path: Option<&str>) {
+fn print_source_pos(source: &str, span: &ast::Span, path: Option<&str>) {
     let prev_new_line = if let Some(found) = source[..span.start].rfind('\n') {
         found + 1
     } else {
@@ -65,10 +64,10 @@ fn main() {
 
         compiler.consume(line)
     }) {
-        match err {
-            parser::ParserError::Expected(pos, err) => {
+        match &err {
+            parser::ParserError::Expected(span, err) => {
                 eprintln!("Error: {}", err);
-                print_source_pos(source, &(pos..pos + 2), Some(args.source.as_str()));
+                print_source_pos(source, span, Some(args.source.as_str()));
             }
             _ => panic!("another error"),
         }

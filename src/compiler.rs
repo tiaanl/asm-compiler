@@ -3,7 +3,6 @@
 use crate::ast;
 use crate::ast::{Expression, Line, Operands, Operator, Value};
 use crate::encoder::EncodeError;
-use crate::lexer::Span;
 use crate::parser::LineConsumer;
 use std::collections::HashMap;
 use std::fmt::Formatter;
@@ -34,7 +33,7 @@ impl std::fmt::Display for CompilerError {
 }
 
 impl CompilerError {
-    pub fn span(&self) -> &Span {
+    pub fn span(&self) -> &ast::Span {
         match self {
             CompilerError::EncodeError(err) => err.span(),
             CompilerError::UnknownLabel(_) => &(0..0),
@@ -69,7 +68,7 @@ struct Output {
 }
 
 fn encode_instruction(
-    _span: Span,
+    _span: ast::Span,
     instruction: &ast::Instruction,
 ) -> Result<Vec<u8>, CompilerError> {
     match crate::encoder::encode(instruction) {
@@ -95,13 +94,13 @@ impl Compiler {
                     line_num,
                 }),
 
-                line @ ast::Line::Data(data) => outputs.push(Output {
+                line @ ast::Line::Data(ref span, data) => outputs.push(Output {
                     address,
                     bytes: data.clone(),
                     line_num,
                 }),
 
-                ast::Line::Constant(_) => {}
+                ast::Line::Constant(_, _) => {}
 
                 line @ ast::Line::Times(_) => outputs.push(Output {
                     address,

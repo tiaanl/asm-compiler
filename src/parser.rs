@@ -1,13 +1,13 @@
 use crate::ast;
-use crate::ast::{Expression, Operator};
 use crate::instructions::{str_to_operation, Operation};
 use crate::lexer::{Cursor, LiteralKind, PunctuationKind, Token};
 use std::fmt::{Display, Formatter};
 
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 pub enum ParserError {
-    Expected(usize, String),
+    Expected(ast::Span, String),
     InvalidPrefixOperator,
+    DataDefinitionWithoutData(ast::Span),
 }
 
 struct FoundToken<'a>(Token, &'a str);
@@ -56,39 +56,41 @@ pub fn parse<'a>(source: &'a str, consumer: &mut impl LineConsumer<'a>) -> Resul
     Parser::new(source).parse(consumer)
 }
 
-impl Operator {
-    fn evaluate(&self, left: i32, right: i32) -> i32 {
-        match self {
-            Operator::Add => left + right,
-            Operator::Subtract => left - right,
-            Operator::Multiply => left * right,
-            Operator::Divide => left / right,
-        }
-    }
-}
+// impl ast::Operator {
+//     fn evaluate(&self, left: i32, right: i32) -> i32 {
+//         match self {
+//             ast::Operator::Add => left + right,
+//             ast::Operator::Subtract => left - right,
+//             ast::Operator::Multiply => left * right,
+//             ast::Operator::Divide => left / right,
+//         }
+//     }
+// }
 
-impl ast::Expression {
-    fn evaluate(&mut self) {
-        match self {
-            Expression::PrefixOperator(_, _) => {}
-            Expression::InfixOperator(operator, left, right) => {
-                left.evaluate();
-                right.evaluate();
-
-                if let (
-                    ast::Expression::Term(ast::Value::Constant(left_value)),
-                    ast::Expression::Term(ast::Value::Constant(right_value)),
-                ) = (left.as_ref(), right.as_ref())
-                {
-                    *self = ast::Expression::Term(ast::Value::Constant(
-                        operator.evaluate(*left_value, *right_value),
-                    ));
-                }
-            }
-            Expression::Term(_) => {}
-        }
-    }
-}
+// impl ast::Expression {
+//     fn evaluate(&mut self) {
+//         match self {
+//             ast::Expression::PrefixOperator(_, _) => {}
+//
+//             ast::Expression::InfixOperator(operator, left, right) => {
+//                 left.evaluate();
+//                 right.evaluate();
+//
+//                 if let (
+//                     ast::Expression::Term(_, ast::Value::Constant(left_value)),
+//                     ast::Expression::Term(_, ast::Value::Constant(right_value)),
+//                 ) = (left.as_ref(), right.as_ref())
+//                 {
+//                     *self = ast::Expression::Term(ast::Value::Constant(
+//                         operator.evaluate(*left_value, *right_value),
+//                     ));
+//                 }
+//             }
+//
+//             ast::Expression::Term(_, _) => {}
+//         }
+//     }
+// }
 
 struct Parser<'a> {
     cursor: Cursor<'a>,
@@ -96,16 +98,20 @@ struct Parser<'a> {
     /// The current token we are parsing.
     token: Token,
 
-    /// The position of the current token.
-    token_pos: usize,
+    /// Position in the cursor where the current token starts.
+    token_start: usize,
+
+    // Position in the cursor where the last meaningful token ended.
+    last_token_end: usize,
 }
 
 impl<'a> Parser<'a> {
     fn new(source: &'a str) -> Self {
         let mut parser = Self {
             cursor: Cursor::new(source),
-            token_pos: 0,
             token: Token::EndOfFile(0),
+            token_start: 0,
+            last_token_end: 0,
         };
 
         // Initialize the current token with the first token that we can fetch from the lexer.
@@ -115,7 +121,7 @@ impl<'a> Parser<'a> {
     }
 
     fn token_source(&self) -> &'a str {
-        self.cursor.source_at(self.token_pos, self.token.len())
+        self.cursor.source_at(self.token_start, self.token.len())
     }
 
     fn parse(&mut self, consumer: &mut impl LineConsumer<'a>) -> Result<(), ParserError> {
@@ -139,17 +145,17 @@ impl<'a> Parser<'a> {
                             }
 
                             "db" => {
-                                let line = self.parse_data::<u8>()?;
+                                let line = self.parse_data(1)?;
                                 consumer.consume(line);
                             }
 
                             "dw" => {
-                                let line = self.parse_data::<u16>()?;
+                                let line = self.parse_data(2)?;
                                 consumer.consume(line);
                             }
 
                             "dd" => {
-                                let line = self.parse_data::<u32>()?;
+                                let line = self.parse_data(4)?;
                                 consumer.consume(line);
                             }
 
@@ -183,14 +189,14 @@ impl<'a> Parser<'a> {
     }
 
     fn next_token(&mut self) {
-        // Store the position of the lexer to that we know where the token we are consuming starts.
-        self.token_pos = self.cursor.pos();
+        self.last_token_end = self.token_start + self.token.len();
+        self.token_start = self.cursor.pos();
 
         loop {
             let token = self.cursor.next_token();
             match token {
                 Token::Comment(_) | Token::Whitespace(_) => {
-                    self.token_pos = self.cursor.pos();
+                    self.token_start = self.cursor.pos();
                     continue;
                 }
                 _ => {
@@ -215,10 +221,10 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_label(&mut self, name: &'a str) -> Result<ast::Line, ParserError> {
-        let start = self.token_pos;
+        let start = self.token_start;
 
         // We only capture the label part.
-        let end = self.token_pos + self.token.len();
+        let end = self.token_start + self.token.len();
 
         // Consume the token that holds the label.
         self.next_token();
@@ -237,14 +243,14 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_instruction(&mut self, operation: Operation) -> Result<ast::Line, ParserError> {
-        let start = self.token_pos;
+        let start = self.token_start;
 
         // Consume the operation.
         self.next_token();
 
         let operands = self.parse_operands()?;
 
-        let end = self.token_pos + self.token.len();
+        let end = self.token_start + self.token.len();
 
         self.require_new_line()?;
 
@@ -258,26 +264,23 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_operands(&mut self) -> Result<ast::Operands, ParserError> {
-        let start = self.token_pos;
-
         if matches!(self.token, Token::NewLine(_) | Token::EndOfFile(_)) {
             Ok(ast::Operands::None(
-                start..self.token_pos + self.token.len(),
+                self.last_token_end..self.last_token_end,
             ))
         } else {
             let destination = self.parse_operand(None)?;
 
             match self.token {
-                Token::NewLine(_) | Token::EndOfFile(_) => Ok(ast::Operands::Destination(
-                    start..self.token_pos + self.token.len(),
-                    destination,
-                )),
+                Token::NewLine(_) | Token::EndOfFile(_) => {
+                    Ok(ast::Operands::Destination(0..0, destination))
+                }
                 Token::Punctuation(_, PunctuationKind::Comma) => {
                     self.next_token();
                     let source = self.parse_operand(None)?;
 
                     Ok(ast::Operands::DestinationAndSource(
-                        start..self.token_pos + self.token.len(),
+                        0..0,
                         destination,
                         source,
                     ))
@@ -323,9 +326,7 @@ impl<'a> Parser<'a> {
     }
 
     fn parse_expression(&mut self) -> Result<ast::Expression, ParserError> {
-        let mut expression = self.parse_expression_with_precedence(0)?;
-        expression.evaluate();
-        Ok(expression)
+        self.parse_expression_with_precedence(0)
     }
 
     fn parse_memory_operand(
@@ -375,19 +376,26 @@ impl<'a> Parser<'a> {
     fn parse_equ(&mut self) -> Result<ast::Line, ParserError> {
         debug_assert!(matches!(self.token, Token::Identifier(_)));
 
+        let start = self.token_start;
+
         // Consume the "equ" keyword.
         self.next_token();
 
-        let mut expression = self.parse_expression()?;
-        expression.evaluate();
+        let expression = self.parse_expression()?;
+
+        let end = self.last_token_end;
 
         self.require_new_line()?;
 
-        Ok(ast::Line::Constant(expression))
+        Ok(ast::Line::Constant(start..end, expression))
     }
 
-    fn parse_data<T>(&mut self) -> Result<ast::Line, ParserError> {
+    fn parse_data(&mut self, bytes_per_value: usize) -> Result<ast::Line, ParserError> {
         debug_assert!(matches!(self.token, Token::Identifier(_)));
+
+        let data_definition_token_span = self.token_start..self.token_start + self.token.len();
+
+        let start = self.token_start;
 
         // Consume the "Dx" keyword.
         self.next_token();
@@ -396,6 +404,8 @@ impl<'a> Parser<'a> {
 
         loop {
             match self.token {
+                Token::NewLine(_) | Token::EndOfFile(_) => break,
+
                 Token::Punctuation(_, PunctuationKind::Comma) => {
                     self.next_token();
                     continue;
@@ -410,19 +420,35 @@ impl<'a> Parser<'a> {
                 }
 
                 Token::Literal(_, LiteralKind::Number(number)) => {
+                    (number as u32)
+                        .to_le_bytes()
+                        .iter()
+                        .take(bytes_per_value)
+                        .for_each(|b| data.push(*b));
+
                     self.next_token();
-                    for b in number.to_le_bytes() {
-                        data.push(b);
-                    }
                 }
 
-                _ => break,
+                _ => {
+                    return Err(ParserError::Expected(
+                        self.token_start..self.token_start + self.token.len(),
+                        "literal expected for data definition".to_owned(),
+                    ))
+                }
             }
+        }
+
+        let end = self.last_token_end;
+
+        if data.is_empty() {
+            return Err(ParserError::DataDefinitionWithoutData(
+                data_definition_token_span,
+            ));
         }
 
         self.require_new_line()?;
 
-        Ok(ast::Line::Data(data))
+        Ok(ast::Line::Data(start..end, data))
     }
 
     fn parse_times(&mut self) -> Result<ast::Line, ParserError> {
@@ -434,7 +460,7 @@ impl<'a> Parser<'a> {
     }
 
     fn expected(&self, message: String) -> ParserError {
-        ParserError::Expected(self.token_pos, message)
+        ParserError::Expected(0..0, message)
     }
 }
 
@@ -573,6 +599,53 @@ impl<'a> Parser<'a> {
 mod tests {
     use super::*;
 
+    macro_rules! expr_const {
+        ($value:literal) => {{
+            ast::Expression::Term(ast::Value::Constant($value))
+        }};
+    }
+
+    macro_rules! expr_label {
+        ($value:literal) => {{
+            ast::Expression::Term(ast::Value::Label($value.to_owned()))
+        }};
+    }
+
+    macro_rules! expr_infix {
+        ($operator:ident, $left:expr, $right:expr) => {{
+            ast::Expression::InfixOperator(
+                ast::Operator::$operator,
+                Box::new($left),
+                Box::new($right),
+            )
+        }};
+    }
+
+    macro_rules! parse_expression {
+        ($source:literal) => {{
+            Parser::new($source).parse_expression().unwrap()
+        }};
+    }
+
+    #[test]
+    fn spans() {
+        let mut parser = Parser::new("one two three   four");
+        assert_eq!(parser.token_start, 0);
+        assert_eq!(parser.last_token_end, 0);
+
+        parser.next_token();
+        assert_eq!(parser.token_start, 4);
+        assert_eq!(parser.last_token_end, 3);
+
+        parser.next_token();
+        assert_eq!(parser.token_start, 8);
+        assert_eq!(parser.last_token_end, 7);
+
+        parser.next_token();
+        assert_eq!(parser.token_start, 16);
+        assert_eq!(parser.last_token_end, 13);
+    }
+
     fn collect_lines(source: &str) -> Vec<ast::Line> {
         let mut parser = Parser::new(source);
         let mut lines = vec![];
@@ -583,6 +656,13 @@ mod tests {
     macro_rules! assert_parse {
         ($source:literal, $lines:expr) => {{
             assert_eq!(collect_lines($source), $lines);
+        }};
+    }
+
+    macro_rules! assert_parse_err {
+        ($source:literal, $err:expr) => {{
+            let mut parser = Parser::new($source);
+            assert_eq!(parser.parse(&mut |_| {}), Err($err));
         }};
     }
 
@@ -644,7 +724,7 @@ mod tests {
             "label equ 42",
             vec![
                 ast::Line::Label(0..5, "label".to_owned()),
-                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(42)))
+                ast::Line::Constant(6..12, expr_const!(42)),
             ]
         );
 
@@ -652,46 +732,83 @@ mod tests {
             "first equ 10 ; first value\n\nsecond equ 20 ; second value\n\n",
             vec![
                 ast::Line::Label(0..5, "first".to_owned()),
-                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(10))),
+                ast::Line::Constant(6..12, expr_const!(10)),
                 ast::Line::Label(28..34, "second".to_owned()),
-                ast::Line::Constant(ast::Expression::Term(ast::Value::Constant(20))),
+                ast::Line::Constant(35..41, expr_const!(20)),
             ]
         );
     }
 
-    macro_rules! expr_const {
-        ($value:literal) => {{
-            ast::Expression::Term(ast::Value::Constant($value))
-        }};
+    #[test]
+    fn data() {
+        assert_parse!(
+            "db 10, 20, 30",
+            vec![ast::Line::Data(0..13, vec![10, 20, 30])]
+        );
+        assert_parse!(
+            "dw 10, 20, 30",
+            vec![ast::Line::Data(0..13, vec![10, 0, 20, 0, 30, 0])]
+        );
+        assert_parse!(
+            "dd 10, 20, 30",
+            vec![ast::Line::Data(
+                0..13,
+                vec![10, 0, 0, 0, 20, 0, 0, 0, 30, 0, 0, 0]
+            ),]
+        );
+
+        assert_parse_err!("db ", ParserError::DataDefinitionWithoutData(0..2));
+        assert_parse_err!(
+            "db test",
+            ParserError::Expected(3..7, "literal expected for data definition".to_owned())
+        );
+        assert_parse_err!(
+            "db 10, test",
+            ParserError::Expected(7..11, "literal expected for data definition".to_owned())
+        );
     }
 
-    macro_rules! expr_label {
-        ($value:literal) => {{
-            ast::Expression::Term(ast::Value::Label($value.to_owned()))
-        }};
-    }
-
-    macro_rules! expr_infix {
-        ($operator:ident, $left:expr, $right:expr) => {{
+    #[test]
+    fn expression_errors() {
+        let expr = parse_expression!("2 + 3 * 4 + 5");
+        assert_eq!(
+            expr,
             ast::Expression::InfixOperator(
-                ast::Operator::$operator,
-                Box::new($left),
-                Box::new($right),
+                ast::Operator::Add,
+                Box::new(ast::Expression::InfixOperator(
+                    ast::Operator::Add,
+                    Box::new(ast::Expression::Term(ast::Value::Constant(2))),
+                    Box::new(ast::Expression::InfixOperator(
+                        ast::Operator::Multiply,
+                        Box::new(ast::Expression::Term(ast::Value::Constant(3))),
+                        Box::new(ast::Expression::Term(ast::Value::Constant(4))),
+                    )),
+                )),
+                Box::new(ast::Expression::Term(ast::Value::Constant(5))),
             )
-        }};
+        );
     }
 
     #[test]
     fn expression_with_precedence() {
-        let mut parser = Parser::new("2 + 3 * 4 + 5");
-        let expr = parser.parse_expression().unwrap();
-        assert_eq!(expr, expr_const!(19));
+        let expr = parse_expression!("2 + 3 * 4 + 5");
+        assert_eq!(
+            expr,
+            expr_infix!(
+                Add,
+                expr_infix!(
+                    Add,
+                    expr_const!(2),
+                    expr_infix!(Multiply, expr_const!(3), expr_const!(4))
+                ),
+                expr_const!(5)
+            )
+        );
     }
 
     #[test]
     fn expression_with_non_constants() {
-        let mut parser = Parser::new("2 + label * 4 + 5");
-        let expr = parser.parse_expression().unwrap();
+        let expr = parse_expression!("2 + label * 4 + 5");
         assert_eq!(
             expr,
             expr_infix!(
@@ -708,8 +825,14 @@ mod tests {
 
     #[test]
     fn expression_with_non_constants_and_constants() {
-        let mut parser = Parser::new("label + 2 * 3");
-        let expr = parser.parse_expression().unwrap();
-        assert_eq!(expr, expr_infix!(Add, expr_label!("label"), expr_const!(6)));
+        let expr = parse_expression!("label + 2 * 3");
+        assert_eq!(
+            expr,
+            expr_infix!(
+                Add,
+                expr_label!("label"),
+                expr_infix!(Multiply, expr_const!(2), expr_const!(3))
+            )
+        );
     }
 }

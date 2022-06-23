@@ -2,7 +2,6 @@
 
 use crate::ast;
 use crate::instructions::Operation;
-use crate::lexer::Span;
 
 #[allow(non_camel_case_types)]
 #[derive(Debug)]
@@ -125,11 +124,11 @@ impl Code {
 
 #[derive(Debug)]
 pub enum EncodeError {
-    InvalidOperands(Span),
+    InvalidOperands(ast::Span),
 }
 
 impl EncodeError {
-    pub fn span(&self) -> &Span {
+    pub fn span(&self) -> &ast::Span {
         match self {
             EncodeError::InvalidOperands(span) => span,
         }
